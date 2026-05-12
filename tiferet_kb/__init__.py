@@ -19,6 +19,8 @@ try:
         TemplateSectionAggregate,
         TemplateTableObject,
         TemplateSectionTableObject,
+        FolderAggregate,
+        FolderNodeObject,
     )
 except Exception as e:
     import os, sys
