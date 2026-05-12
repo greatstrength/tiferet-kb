@@ -13,3 +13,9 @@ from .document import (
     DocumentTableObject,
     DocumentSectionTableObject,
 )
+from .template import (
+    TemplateAggregate,
+    TemplateSectionAggregate,
+    TemplateTableObject,
+    TemplateSectionTableObject,
+)

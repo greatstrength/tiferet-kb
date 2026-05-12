@@ -21,3 +21,11 @@ from .document import (
     RemoveDocumentSection,
     ReorderDocumentSections,
 )
+from .template import (
+    AddTemplate,
+    GetTemplate,
+    ListTemplates,
+    UpdateTemplate,
+    RemoveTemplate,
+    ApplyTemplate,
+)

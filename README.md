@@ -160,6 +160,17 @@ result = DomainEvent.handle(
 | `RemoveDocumentSection` | `id` | Delete a section (idempotent) |
 | `ReorderDocumentSections` | `document_id`, `section_ids` | Reorder sections by providing ID list |
 
+#### Template Events
+
+| Event | Required Params | Description |
+|---|---|---|
+| `AddTemplate` | `name` | Create a template (optionally with initial `sections` list) |
+| `GetTemplate` | `id` | Retrieve with sections |
+| `ListTemplates` | — | List with optional `category_id` filter |
+| `UpdateTemplate` | `id`, `attribute` | Update `name`, `description`, or `category_id` |
+| `RemoveTemplate` | `id` | Delete with cascading section removal |
+| `ApplyTemplate` | `template_id`, `title` | Create a document from a template (stamps sections) |
+
 ### Repositories
 
 Repositories implement Service interfaces and use `tiferet_h5.H5Repository` for HDF5 access.
@@ -203,9 +214,12 @@ repo.delete('doc-id')                            # Cascade delete doc + sections
 /kb/
 ├── categories/
 │   └── <category_id>/          ← group node, attrs: name, description, icon, color
-└── documents/
-    ├── documents               ← table: id, title, category_id, status, ...
-    └── document_sections       ← table: id, document_id, title, content, position, ...
+├── documents/
+│   ├── documents               ← table: id, title, category_id, status, ...
+│   └── document_sections       ← table: id, document_id, title, content, position, ...
+└── templates/
+    ├── templates               ← table: id, name, description, category_id, ...
+    └── template_sections       ← table: id, template_id, title, default_content, position, ...
 ```
 
 ## Architecture

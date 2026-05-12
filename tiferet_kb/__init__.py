@@ -6,8 +6,8 @@
 # Wrap runtime imports in a try/except so that build tools can import
 # __version__ without requiring the full dependency tree to be installed.
 try:
-    from .domain import Category, Document, DocumentSection
-    from .interfaces import CategoryService, DocumentService
+    from .domain import Category, Document, DocumentSection, Template, TemplateSection
+    from .interfaces import CategoryService, DocumentService, TemplateService
     from .mappers import (
         CategoryAggregate,
         CategoryNodeObject,
@@ -15,6 +15,10 @@ try:
         DocumentSectionAggregate,
         DocumentTableObject,
         DocumentSectionTableObject,
+        TemplateAggregate,
+        TemplateSectionAggregate,
+        TemplateTableObject,
+        TemplateSectionTableObject,
     )
 except Exception as e:
     import os, sys
