@@ -10,3 +10,10 @@ from .category import (
     UpdateCategory,
     RemoveCategory,
 )
+from .document import (
+    AddDocument,
+    GetDocument,
+    ListDocuments,
+    UpdateDocument,
+    RemoveDocument,
+)

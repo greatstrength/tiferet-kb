@@ -7,3 +7,9 @@ from .category import (
     CategoryAggregate,
     CategoryNodeObject,
 )
+from .document import (
+    DocumentAggregate,
+    DocumentSectionAggregate,
+    DocumentTableObject,
+    DocumentSectionTableObject,
+)
