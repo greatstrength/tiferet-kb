@@ -6,3 +6,4 @@
 from .category import Category
 from .document import Document, DocumentSection
 from .template import Template, TemplateSection
+from .folder import Folder

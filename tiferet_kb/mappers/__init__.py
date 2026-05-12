@@ -19,3 +19,7 @@ from .template import (
     TemplateTableObject,
     TemplateSectionTableObject,
 )
+from .folder import (
+    FolderAggregate,
+    FolderNodeObject,
+)

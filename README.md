@@ -171,6 +171,17 @@ result = DomainEvent.handle(
 | `RemoveTemplate` | `id` | Delete with cascading section removal |
 | `ApplyTemplate` | `template_id`, `title` | Create a document from a template (stamps sections) |
 
+#### Folder Events
+
+| Event | Required Params | Description |
+|---|---|---|
+| `AddFolder` | `name` | Create a folder (optionally nested via `parent_id`) |
+| `GetFolder` | `id` | Retrieve by ID |
+| `ListFolderContents` | `folder_id` | List child folders and documents |
+| `MoveFolder` | `id` | Move to a new parent (circular reference check) |
+| `MoveDocument` | `document_id` | Move a document to a folder (or unfile) |
+| `RemoveFolder` | `id` | Delete folder, unfile contained documents |
+
 ### Repositories
 
 Repositories implement Service interfaces and use `tiferet_h5.H5Repository` for HDF5 access.
@@ -217,9 +228,11 @@ repo.delete('doc-id')                            # Cascade delete doc + sections
 ├── documents/
 │   ├── documents               ← table: id, title, category_id, status, ...
 │   └── document_sections       ← table: id, document_id, title, content, position, ...
-└── templates/
-    ├── templates               ← table: id, name, description, category_id, ...
-    └── template_sections       ← table: id, template_id, title, default_content, position, ...
+├── templates/
+│   ├── templates               ← table: id, name, description, category_id, ...
+│   └── template_sections       ← table: id, template_id, title, default_content, position, ...
+└── folders/
+    └── <folder_id>/            ← group node, attrs: name, parent_id, path, created_at
 ```
 
 ## Architecture

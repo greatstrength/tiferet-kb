@@ -29,3 +29,11 @@ from .template import (
     RemoveTemplate,
     ApplyTemplate,
 )
+from .folder import (
+    AddFolder,
+    GetFolder,
+    ListFolderContents,
+    MoveFolder,
+    MoveDocument,
+    RemoveFolder,
+)
