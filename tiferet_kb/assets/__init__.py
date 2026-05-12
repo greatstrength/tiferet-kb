@@ -1,0 +1,1 @@
+"""tiferet_kb Assets"""

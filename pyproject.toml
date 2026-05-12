@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tiferet-kb"
+dynamic = ["version"]
+description = "Knowledge Base extension for the Tiferet framework with HDF5-backed storage"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "BSD-3-Clause" }
+dependencies = [
+    "tiferet>=2.0.0b3",
+    "tiferet-h5>=0.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0",
+    "pytest-cov",
+]
+
+[tool.setuptools.dynamic]
+version = {attr = "tiferet_kb.__version__"}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tiferet_kb*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tiferet_kb"]
