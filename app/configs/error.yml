@@ -1,0 +1,86 @@
+errors:
+  kb_document_not_found:
+    name: Document Not Found
+    message:
+      - lang: en_US
+        text: 'Document not found: {document_id}'
+  kb_document_already_exists:
+    name: Document Already Exists
+    message:
+      - lang: en_US
+        text: 'Document with ID {id} already exists'
+  kb_document_section_not_found:
+    name: Document Section Not Found
+    message:
+      - lang: en_US
+        text: 'Document section not found: {section_id}'
+  kb_invalid_document_status:
+    name: Invalid Document Status
+    message:
+      - lang: en_US
+        text: 'Invalid document status: {status}. Must be draft, published, or archived'
+  kb_invalid_document_attribute:
+    name: Invalid Document Attribute
+    message:
+      - lang: en_US
+        text: 'Invalid document attribute: {attribute}'
+  kb_invalid_section_attribute:
+    name: Invalid Section Attribute
+    message:
+      - lang: en_US
+        text: 'Invalid section attribute: {attribute}'
+  kb_category_not_found:
+    name: Category Not Found
+    message:
+      - lang: en_US
+        text: 'Category not found: {category_id}'
+  kb_category_already_exists:
+    name: Category Already Exists
+    message:
+      - lang: en_US
+        text: 'Category with ID {id} already exists'
+  kb_category_in_use:
+    name: Category In Use
+    message:
+      - lang: en_US
+        text: 'Category {id} is referenced by existing documents'
+  kb_invalid_category_attribute:
+    name: Invalid Category Attribute
+    message:
+      - lang: en_US
+        text: 'Invalid category attribute: {attribute}'
+  kb_template_not_found:
+    name: Template Not Found
+    message:
+      - lang: en_US
+        text: 'Template not found: {template_id}'
+  kb_template_already_exists:
+    name: Template Already Exists
+    message:
+      - lang: en_US
+        text: 'Template with ID {id} already exists'
+  kb_folder_not_found:
+    name: Folder Not Found
+    message:
+      - lang: en_US
+        text: 'Folder not found: {folder_id}'
+  kb_folder_already_exists:
+    name: Folder Already Exists
+    message:
+      - lang: en_US
+        text: 'Folder with ID {id} already exists'
+  kb_folder_circular_reference:
+    name: Folder Circular Reference
+    message:
+      - lang: en_US
+        text: 'Cannot move folder {folder_id} to create a circular reference'
+  kb_folder_not_empty:
+    name: Folder Not Empty
+    message:
+      - lang: en_US
+        text: 'Folder {folder_id} contains documents or subfolders'
+  kb_invalid_content_type:
+    name: Invalid Content Type
+    message:
+      - lang: en_US
+        text: 'Invalid content type: {content_type}. Must be text, markdown, code, table, or image'

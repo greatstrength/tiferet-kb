@@ -1,0 +1,4 @@
+interfaces:
+  kb:
+    name: Knowledge Base
+    description: Manage documents, categories, templates, and folders

@@ -61,7 +61,7 @@ class CategoryH5Repository(H5Repository, CategoryService):
         group_path = f'{CATEGORIES_ROOT}/{id}'
 
         # Check node existence within a context-managed client.
-        with self.client(mode='r') as h5:
+        with self.client() as h5:
             return h5.node_exists(group_path)
 
     # * method: get
@@ -79,7 +79,7 @@ class CategoryH5Repository(H5Repository, CategoryService):
         group_path = f'{CATEGORIES_ROOT}/{id}'
 
         # Read attributes from the group node.
-        with self.client(mode='r') as h5:
+        with self.client() as h5:
 
             # Return None if the group does not exist.
             if not h5.node_exists(group_path):
@@ -103,7 +103,7 @@ class CategoryH5Repository(H5Repository, CategoryService):
         # Collect all category aggregates.
         categories: List[CategoryAggregate] = []
 
-        with self.client(mode='r') as h5:
+        with self.client() as h5:
 
             # Return empty if the root group does not exist.
             if not h5.node_exists(CATEGORIES_ROOT):

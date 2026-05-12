@@ -1,0 +1,88 @@
+attrs:
+  # Category events
+  add_category_event:
+    module_path: tiferet_kb.events.category
+    class_name: AddCategory
+  get_category_event:
+    module_path: tiferet_kb.events.category
+    class_name: GetCategory
+  list_categories_event:
+    module_path: tiferet_kb.events.category
+    class_name: ListCategories
+  update_category_event:
+    module_path: tiferet_kb.events.category
+    class_name: UpdateCategory
+  remove_category_event:
+    module_path: tiferet_kb.events.category
+    class_name: RemoveCategory
+
+  # Document events
+  add_document_event:
+    module_path: tiferet_kb.events.document
+    class_name: AddDocument
+  get_document_event:
+    module_path: tiferet_kb.events.document
+    class_name: GetDocument
+  list_documents_event:
+    module_path: tiferet_kb.events.document
+    class_name: ListDocuments
+  update_document_event:
+    module_path: tiferet_kb.events.document
+    class_name: UpdateDocument
+  remove_document_event:
+    module_path: tiferet_kb.events.document
+    class_name: RemoveDocument
+
+  # Section events
+  add_document_section_event:
+    module_path: tiferet_kb.events.document
+    class_name: AddDocumentSection
+  update_document_section_event:
+    module_path: tiferet_kb.events.document
+    class_name: UpdateDocumentSection
+  remove_document_section_event:
+    module_path: tiferet_kb.events.document
+    class_name: RemoveDocumentSection
+  reorder_document_sections_event:
+    module_path: tiferet_kb.events.document
+    class_name: ReorderDocumentSections
+
+  # Template events
+  add_template_event:
+    module_path: tiferet_kb.events.template
+    class_name: AddTemplate
+  get_template_event:
+    module_path: tiferet_kb.events.template
+    class_name: GetTemplate
+  list_templates_event:
+    module_path: tiferet_kb.events.template
+    class_name: ListTemplates
+  update_template_event:
+    module_path: tiferet_kb.events.template
+    class_name: UpdateTemplate
+  remove_template_event:
+    module_path: tiferet_kb.events.template
+    class_name: RemoveTemplate
+  apply_template_event:
+    module_path: tiferet_kb.events.template
+    class_name: ApplyTemplate
+
+  # Folder events
+  add_folder_event:
+    module_path: tiferet_kb.events.folder
+    class_name: AddFolder
+  get_folder_event:
+    module_path: tiferet_kb.events.folder
+    class_name: GetFolder
+  list_folder_contents_event:
+    module_path: tiferet_kb.events.folder
+    class_name: ListFolderContents
+  move_folder_event:
+    module_path: tiferet_kb.events.folder
+    class_name: MoveFolder
+  move_document_event:
+    module_path: tiferet_kb.events.folder
+    class_name: MoveDocument
+  remove_folder_event:
+    module_path: tiferet_kb.events.folder
+    class_name: RemoveFolder

@@ -1,0 +1,171 @@
+features:
+  # Category features
+  category:
+    add:
+      name: Add Category
+      description: Create a new knowledge base category
+      commands:
+        - attribute_id: add_category_event
+          name: Add category
+    get:
+      name: Get Category
+      description: Retrieve a category by ID
+      commands:
+        - attribute_id: get_category_event
+          name: Get category
+    list:
+      name: List Categories
+      description: List all categories
+      commands:
+        - attribute_id: list_categories_event
+          name: List categories
+    update:
+      name: Update Category
+      description: Update a category attribute
+      commands:
+        - attribute_id: update_category_event
+          name: Update category
+    remove:
+      name: Remove Category
+      description: Remove a category
+      commands:
+        - attribute_id: remove_category_event
+          name: Remove category
+
+  # Document features
+  document:
+    add:
+      name: Add Document
+      description: Create a new document
+      commands:
+        - attribute_id: add_document_event
+          name: Add document
+    get:
+      name: Get Document
+      description: Retrieve a document with sections
+      commands:
+        - attribute_id: get_document_event
+          name: Get document
+    list:
+      name: List Documents
+      description: List documents with optional filters
+      commands:
+        - attribute_id: list_documents_event
+          name: List documents
+    update:
+      name: Update Document
+      description: Update a document attribute
+      commands:
+        - attribute_id: update_document_event
+          name: Update document
+    remove:
+      name: Remove Document
+      description: Remove a document and its sections
+      commands:
+        - attribute_id: remove_document_event
+          name: Remove document
+
+  # Section features
+  section:
+    add:
+      name: Add Section
+      description: Add a section to a document
+      commands:
+        - attribute_id: add_document_section_event
+          name: Add section
+    update:
+      name: Update Section
+      description: Update a section attribute
+      commands:
+        - attribute_id: update_document_section_event
+          name: Update section
+    remove:
+      name: Remove Section
+      description: Remove a section from a document
+      commands:
+        - attribute_id: remove_document_section_event
+          name: Remove section
+    reorder:
+      name: Reorder Sections
+      description: Reorder sections within a document
+      commands:
+        - attribute_id: reorder_document_sections_event
+          name: Reorder sections
+
+  # Template features
+  template:
+    add:
+      name: Add Template
+      description: Create a new template
+      commands:
+        - attribute_id: add_template_event
+          name: Add template
+    get:
+      name: Get Template
+      description: Retrieve a template with sections
+      commands:
+        - attribute_id: get_template_event
+          name: Get template
+    list:
+      name: List Templates
+      description: List templates
+      commands:
+        - attribute_id: list_templates_event
+          name: List templates
+    update:
+      name: Update Template
+      description: Update a template attribute
+      commands:
+        - attribute_id: update_template_event
+          name: Update template
+    remove:
+      name: Remove Template
+      description: Remove a template and its sections
+      commands:
+        - attribute_id: remove_template_event
+          name: Remove template
+    apply:
+      name: Apply Template
+      description: Create a document from a template
+      commands:
+        - attribute_id: apply_template_event
+          name: Apply template
+
+  # Folder features
+  folder:
+    add:
+      name: Add Folder
+      description: Create a new folder
+      commands:
+        - attribute_id: add_folder_event
+          name: Add folder
+    get:
+      name: Get Folder
+      description: Retrieve a folder by ID
+      commands:
+        - attribute_id: get_folder_event
+          name: Get folder
+    contents:
+      name: List Folder Contents
+      description: List child folders and documents
+      commands:
+        - attribute_id: list_folder_contents_event
+          name: List folder contents
+    move:
+      name: Move Folder
+      description: Move a folder to a new parent
+      commands:
+        - attribute_id: move_folder_event
+          name: Move folder
+    move_document:
+      name: Move Document
+      description: Move a document to a folder
+      commands:
+        - attribute_id: move_document_event
+          name: Move document
+    remove:
+      name: Remove Folder
+      description: Remove a folder and unfile its documents
+      commands:
+        - attribute_id: remove_folder_event
+          name: Remove folder
