@@ -16,4 +16,8 @@ from .document import (
     ListDocuments,
     UpdateDocument,
     RemoveDocument,
+    AddDocumentSection,
+    UpdateDocumentSection,
+    RemoveDocumentSection,
+    ReorderDocumentSections,
 )

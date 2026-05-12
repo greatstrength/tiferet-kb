@@ -11,13 +11,17 @@ from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
 from ...interfaces.document import DocumentService
-from ...mappers.document import DocumentAggregate
+from ...mappers.document import DocumentAggregate, DocumentSectionAggregate
 from ..document import (
     AddDocument,
     GetDocument,
     ListDocuments,
     UpdateDocument,
     RemoveDocument,
+    AddDocumentSection,
+    UpdateDocumentSection,
+    RemoveDocumentSection,
+    ReorderDocumentSections,
 )
 
 # *** fixtures
@@ -37,6 +41,22 @@ def sample_document() -> DocumentAggregate:
         id='doc-001',
         title='Test Document',
         status='draft',
+        created_at='2026-01-01T00:00:00+00:00',
+        updated_at='2026-01-01T00:00:00+00:00',
+    )
+
+
+# ** fixture: sample_section
+@pytest.fixture
+def sample_section() -> DocumentSectionAggregate:
+    '''Sample DocumentSectionAggregate instance for testing.'''
+    return DocumentSectionAggregate(
+        id='sec-001',
+        document_id='doc-001',
+        title='Introduction',
+        content_type='markdown',
+        content='# Hello',
+        position=0,
         created_at='2026-01-01T00:00:00+00:00',
         updated_at='2026-01-01T00:00:00+00:00',
     )
@@ -224,3 +244,218 @@ def test_remove_document_success(mock_document_service):
 
     assert result == 'doc-001'
     mock_document_service.delete.assert_called_once_with('doc-001')
+
+
+# *** section event tests
+
+# ** test: add_document_section_success
+def test_add_document_section_success(mock_document_service):
+    '''Test successful addition of a section.'''
+
+    mock_document_service.exists.return_value = True
+    mock_document_service.get_sections.return_value = []
+
+    result = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        document_id='doc-001',
+        title='Introduction',
+        content_type='markdown',
+        content='# Hello',
+    )
+
+    assert result.title == 'Introduction'
+    assert result.content_type == 'markdown'
+    assert result.document_id == 'doc-001'
+    assert result.position == 0
+    mock_document_service.save_section.assert_called_once()
+
+
+# ** test: add_document_section_with_position
+def test_add_document_section_with_position(mock_document_service):
+    '''Test adding a section with an explicit position.'''
+
+    mock_document_service.exists.return_value = True
+
+    result = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        document_id='doc-001',
+        title='Middle Section',
+        content_type='text',
+        position=1,
+    )
+
+    assert result.position == 1
+
+
+# ** test: add_document_section_invalid_content_type
+def test_add_document_section_invalid_content_type(mock_document_service):
+    '''Test that an invalid content type raises.'''
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            AddDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            document_id='doc-001',
+            title='Bad',
+            content_type='invalid',
+        )
+
+
+# ** test: add_document_section_document_not_found
+def test_add_document_section_document_not_found(mock_document_service):
+    '''Test that adding a section to a non-existent document raises.'''
+
+    mock_document_service.exists.return_value = False
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            AddDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            document_id='nonexistent',
+            title='Intro',
+            content_type='text',
+        )
+
+
+# ** test: add_document_section_missing_params
+def test_add_document_section_missing_params(mock_document_service):
+    '''Test that missing required params raise.'''
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            AddDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            document_id='doc-001',
+        )
+
+
+# ** test: update_document_section_success
+def test_update_document_section_success(mock_document_service, sample_section):
+    '''Test successful update of a section attribute.'''
+
+    mock_document_service.get_sections.return_value = [sample_section]
+
+    result = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+        attribute='content',
+        value='Updated content',
+        document_id='doc-001',
+    )
+
+    assert result.content == 'Updated content'
+    mock_document_service.save_section.assert_called_once()
+
+
+# ** test: update_document_section_rename
+def test_update_document_section_rename(mock_document_service, sample_section):
+    '''Test renaming a section.'''
+
+    mock_document_service.get_sections.return_value = [sample_section]
+
+    result = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+        attribute='title',
+        value='Updated Title',
+        document_id='doc-001',
+    )
+
+    assert result.title == 'Updated Title'
+
+
+# ** test: update_document_section_invalid_attribute
+def test_update_document_section_invalid_attribute(mock_document_service):
+    '''Test that an invalid section attribute raises.'''
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            UpdateDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            id='sec-001',
+            attribute='nonexistent',
+            value='bad',
+            document_id='doc-001',
+        )
+
+
+# ** test: update_document_section_not_found
+def test_update_document_section_not_found(mock_document_service):
+    '''Test that updating a non-existent section raises.'''
+
+    mock_document_service.get_sections.return_value = []
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            UpdateDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            id='nonexistent',
+            attribute='content',
+            value='test',
+            document_id='doc-001',
+        )
+
+
+# ** test: update_document_section_invalid_content_type
+def test_update_document_section_invalid_content_type(mock_document_service):
+    '''Test that an invalid content_type value raises.'''
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            UpdateDocumentSection,
+            dependencies={'document_service': mock_document_service},
+            id='sec-001',
+            attribute='content_type',
+            value='invalid',
+            document_id='doc-001',
+        )
+
+
+# ** test: remove_document_section_success
+def test_remove_document_section_success(mock_document_service):
+    '''Test successful removal of a section.'''
+
+    result = DomainEvent.handle(
+        RemoveDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+    )
+
+    assert result == 'sec-001'
+    mock_document_service.delete_section.assert_called_once_with('sec-001')
+
+
+# ** test: reorder_document_sections_success
+def test_reorder_document_sections_success(mock_document_service):
+    '''Test successful reordering of sections.'''
+
+    mock_document_service.exists.return_value = True
+
+    result = DomainEvent.handle(
+        ReorderDocumentSections,
+        dependencies={'document_service': mock_document_service},
+        document_id='doc-001',
+        section_ids=['sec-002', 'sec-001'],
+    )
+
+    assert result == 'doc-001'
+    mock_document_service.reorder_sections.assert_called_once_with('doc-001', ['sec-002', 'sec-001'])
+
+
+# ** test: reorder_document_sections_document_not_found
+def test_reorder_document_sections_document_not_found(mock_document_service):
+    '''Test that reordering for a non-existent document raises.'''
+
+    mock_document_service.exists.return_value = False
+
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            ReorderDocumentSections,
+            dependencies={'document_service': mock_document_service},
+            document_id='nonexistent',
+            section_ids=['sec-001'],
+        )

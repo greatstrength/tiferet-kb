@@ -151,6 +151,15 @@ result = DomainEvent.handle(
 | `UpdateDocument` | `id`, `attribute` | Update `title`, `status`, `category_id`, or `folder_id` |
 | `RemoveDocument` | `id` | Delete with cascading section removal |
 
+#### Section Events
+
+| Event | Required Params | Description |
+|---|---|---|
+| `AddDocumentSection` | `document_id`, `title`, `content_type` | Add a section (auto-appends or explicit position) |
+| `UpdateDocumentSection` | `id`, `attribute` + `document_id` | Update `title`, `content`, or `content_type` |
+| `RemoveDocumentSection` | `id` | Delete a section (idempotent) |
+| `ReorderDocumentSections` | `document_id`, `section_ids` | Reorder sections by providing ID list |
+
 ### Repositories
 
 Repositories implement Service interfaces and use `tiferet_h5.H5Repository` for HDF5 access.

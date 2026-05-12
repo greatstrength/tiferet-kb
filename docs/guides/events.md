@@ -163,6 +163,105 @@ mock_service.get.assert_called_once_with('meeting-notes')
 
 ---
 
+---
+
+## Section Events
+
+**Module:** `tiferet_kb.events.document`
+
+All section events depend on `DocumentService` injected via the constructor.
+
+### AddDocumentSection
+
+Adds a new section to an existing document.
+
+**Required parameters:** `document_id`, `title`, `content_type`
+**Optional parameters:** `content`, `position`
+
+**Behavior:**
+1. Validates `content_type` is one of `text`, `markdown`, `code`, `table`, `image` (`KB_INVALID_CONTENT_TYPE`).
+2. Verifies the parent document exists (`KB_DOCUMENT_NOT_FOUND`).
+3. If `position` is not provided, appends to the end.
+4. Creates and persists a `DocumentSectionAggregate`.
+5. Returns the created `DocumentSection`.
+
+```python
+result = DomainEvent.handle(
+    AddDocumentSection,
+    dependencies={'document_service': doc_service},
+    document_id='doc-001',
+    title='Introduction',
+    content_type='markdown',
+    content='# Welcome',
+)
+```
+
+### UpdateDocumentSection
+
+Updates a section's content or metadata.
+
+**Required parameters:** `id`, `attribute`, `document_id` (via kwargs)
+**Supported attributes:** `title`, `content`, `content_type`
+
+**Behavior:**
+1. Validates the attribute name (`KB_INVALID_SECTION_ATTRIBUTE`).
+2. For `content_type`, validates the value (`KB_INVALID_CONTENT_TYPE`).
+3. Retrieves the section by `id` within the document's section list.
+4. Applies the mutation and persists.
+
+```python
+result = DomainEvent.handle(
+    UpdateDocumentSection,
+    dependencies={'document_service': doc_service},
+    id='sec-001',
+    attribute='content',
+    value='Updated content here',
+    document_id='doc-001',
+)
+```
+
+### RemoveDocumentSection
+
+Removes a section by ID. Idempotent.
+
+**Required parameters:** `id`
+
+```python
+result = DomainEvent.handle(
+    RemoveDocumentSection,
+    dependencies={'document_service': doc_service},
+    id='sec-001',
+)
+```
+
+### ReorderDocumentSections
+
+Reorders sections within a document by providing the desired ordering of section IDs.
+
+**Required parameters:** `document_id`, `section_ids`
+
+```python
+result = DomainEvent.handle(
+    ReorderDocumentSections,
+    dependencies={'document_service': doc_service},
+    document_id='doc-001',
+    section_ids=['sec-003', 'sec-001', 'sec-002'],
+)
+```
+
+---
+
+## Section Error Codes
+
+| Constant | When Raised |
+|---|---|
+| `KB_DOCUMENT_NOT_FOUND` | `AddDocumentSection` / `ReorderDocumentSections` when the parent document does not exist. |
+| `KB_DOCUMENT_SECTION_NOT_FOUND` | `UpdateDocumentSection` when the section ID is not found. |
+| `KB_INVALID_SECTION_ATTRIBUTE` | `UpdateDocumentSection` when the attribute name is not supported. |
+| `KB_INVALID_CONTENT_TYPE` | `AddDocumentSection` / `UpdateDocumentSection` when the content type is invalid. |
+
+---
+
 ## Import Reference
 
 ```python
@@ -172,5 +271,14 @@ from tiferet_kb.events import (
     ListCategories,
     UpdateCategory,
     RemoveCategory,
+    AddDocument,
+    GetDocument,
+    ListDocuments,
+    UpdateDocument,
+    RemoveDocument,
+    AddDocumentSection,
+    UpdateDocumentSection,
+    RemoveDocumentSection,
+    ReorderDocumentSections,
 )
 ```
