@@ -52,3 +52,12 @@ KB_FOLDER_NOT_EMPTY_ID = 'KB_FOLDER_NOT_EMPTY'
 
 # ** constant: kb_invalid_content_type_id
 KB_INVALID_CONTENT_TYPE_ID = 'KB_INVALID_CONTENT_TYPE'
+
+# ** constant: kb_embedding_not_found_id
+KB_EMBEDDING_NOT_FOUND_ID = 'KB_EMBEDDING_NOT_FOUND'
+
+# ** constant: kb_embedding_dimension_mismatch_id
+KB_EMBEDDING_DIMENSION_MISMATCH_ID = 'KB_EMBEDDING_DIMENSION_MISMATCH'
+
+# ** constant: kb_section_not_embedded_id
+KB_SECTION_NOT_EMBEDDED_ID = 'KB_SECTION_NOT_EMBEDDED'

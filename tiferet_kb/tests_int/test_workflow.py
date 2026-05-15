@@ -23,6 +23,7 @@ from ..repos.folder import FolderH5Repository
 from ..mappers import CategoryAggregate
 from ..events import (
     AddCategory,
+    AddDocument,
     AddTemplate,
     ApplyTemplate,
     GetDocument,
@@ -34,6 +35,9 @@ from ..events import (
     ListFolderContents,
     RemoveDocument,
     RemoveFolder,
+    EmbedDocumentSections,
+    SearchSimilarSections,
+    RemoveEmbedding,
 )
 
 # *** fixtures
@@ -220,3 +224,117 @@ def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo):
         id=folder.id,
     )
     assert folder_repo.exists(folder.id) is False
+
+
+# ** test_int: embedding_workflow
+def test_int_embedding_workflow(category_repo, doc_repo, template_repo):
+    '''
+    End-to-end test: create document → embed sections → search → remove → verify.
+    '''
+
+    # --- Step 1: Create a category and document with sections ---
+    DomainEvent.handle(
+        AddCategory,
+        dependencies={'category_service': category_repo},
+        id='tech-notes',
+        name='Tech Notes',
+    )
+
+    document = DomainEvent.handle(
+        AddDocument,
+        dependencies={'document_service': doc_repo},
+        title='Embedding Test Doc',
+        category_id='tech-notes',
+    )
+
+    sec_a = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': doc_repo},
+        document_id=document.id,
+        title='Machine Learning Overview',
+        content_type='markdown',
+        content='ML is a subset of AI focused on learning from data.',
+    )
+
+    sec_b = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': doc_repo},
+        document_id=document.id,
+        title='Database Indexing',
+        content_type='markdown',
+        content='B-tree indexes speed up read queries.',
+    )
+
+    sec_c = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': doc_repo},
+        document_id=document.id,
+        title='Neural Networks',
+        content_type='markdown',
+        content='Neural networks are inspired by biological neurons.',
+    )
+
+    # --- Step 2: Embed all sections ---
+    # Simulated embeddings: sec_a and sec_c are about ML (similar direction),
+    # sec_b is about databases (orthogonal direction).
+    embeddings = {
+        sec_a.id: [0.9, 0.1, 0.0, 0.0],
+        sec_b.id: [0.0, 0.0, 0.9, 0.1],
+        sec_c.id: [0.8, 0.2, 0.0, 0.0],
+    }
+
+    count = DomainEvent.handle(
+        EmbedDocumentSections,
+        dependencies={'document_service': doc_repo},
+        document_id=document.id,
+        embeddings=embeddings,
+        model_name='test-embedding-model',
+    )
+    assert count == 3
+
+    # --- Step 3: Verify embeddings stored ---
+    emb = doc_repo.get_embedding(sec_a.id)
+    assert emb is not None
+    assert len(emb) == 4
+
+    # --- Step 4: Search with an ML-like query ---
+    results = DomainEvent.handle(
+        SearchSimilarSections,
+        dependencies={'document_service': doc_repo},
+        query_embedding=[1.0, 0.0, 0.0, 0.0],
+        limit=3,
+    )
+    assert len(results) == 3
+    # ML sections should rank higher than database section.
+    ml_section_ids = {sec_a.id, sec_c.id}
+    assert results[0]['section_id'] in ml_section_ids
+    assert results[1]['section_id'] in ml_section_ids
+    assert results[2]['section_id'] == sec_b.id
+
+    # --- Step 5: Search with a DB-like query ---
+    db_results = DomainEvent.handle(
+        SearchSimilarSections,
+        dependencies={'document_service': doc_repo},
+        query_embedding=[0.0, 0.0, 1.0, 0.0],
+        limit=1,
+    )
+    assert db_results[0]['section_id'] == sec_b.id
+
+    # --- Step 6: Remove one embedding ---
+    DomainEvent.handle(
+        RemoveEmbedding,
+        dependencies={'document_service': doc_repo},
+        section_id=sec_c.id,
+    )
+    assert doc_repo.get_embedding(sec_c.id) is None
+    # Other embeddings still exist.
+    assert doc_repo.get_embedding(sec_a.id) is not None
+
+    # --- Step 7: Search again — only 2 results now ---
+    results_after = DomainEvent.handle(
+        SearchSimilarSections,
+        dependencies={'document_service': doc_repo},
+        query_embedding=[1.0, 0.0, 0.0, 0.0],
+        limit=5,
+    )
+    assert len(results_after) == 2
