@@ -29,6 +29,11 @@ from .template import (
     RemoveTemplate,
     ApplyTemplate,
 )
+from .embedding import (
+    EmbedDocumentSections,
+    SearchSimilarSections,
+    RemoveEmbedding,
+)
 from .folder import (
     AddFolder,
     GetFolder,

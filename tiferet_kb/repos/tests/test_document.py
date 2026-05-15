@@ -251,3 +251,149 @@ def test_int_reorder_sections(doc_repo, sample_document):
     assert sections[0].position == 0
     assert sections[1].id == 'sec-001'
     assert sections[1].position == 1
+
+
+# ** test_int: embed_section_and_get_embedding
+def test_int_embed_section_and_get_embedding(doc_repo, sample_document, sample_section):
+    '''Test embedding storage and retrieval.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    embedding = [0.1, 0.2, 0.3, 0.4]
+    doc_repo.embed_section('sec-001', embedding, 'test-model')
+
+    result = doc_repo.get_embedding('sec-001')
+    assert result is not None
+    assert len(result) == 4
+    assert abs(result[0] - 0.1) < 1e-5
+
+
+# ** test_int: get_embedding_not_found
+def test_int_get_embedding_not_found(doc_repo):
+    '''Test that get_embedding returns None for non-embedded sections.'''
+
+    assert doc_repo.get_embedding('nonexistent') is None
+
+
+# ** test_int: embed_section_replace
+def test_int_embed_section_replace(doc_repo, sample_document, sample_section):
+    '''Test that re-embedding a section replaces the previous vector.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    doc_repo.embed_section('sec-001', [0.1, 0.2, 0.3], 'test-model')
+    doc_repo.embed_section('sec-001', [0.9, 0.8, 0.7], 'test-model')
+
+    result = doc_repo.get_embedding('sec-001')
+    assert abs(result[0] - 0.9) < 1e-5
+
+
+# ** test_int: embed_multiple_sections
+def test_int_embed_multiple_sections(doc_repo, sample_document):
+    '''Test embedding multiple sections.'''
+
+    doc_repo.save(sample_document)
+
+    sec1 = DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='S1',
+        content_type='text', content='A', position=0,
+    )
+    sec2 = DocumentSectionAggregate(
+        id='sec-002', document_id='doc-001', title='S2',
+        content_type='text', content='B', position=1,
+    )
+    doc_repo.save_section(sec1)
+    doc_repo.save_section(sec2)
+
+    doc_repo.embed_section('sec-001', [1.0, 0.0, 0.0], 'test-model')
+    doc_repo.embed_section('sec-002', [0.0, 1.0, 0.0], 'test-model')
+
+    assert doc_repo.get_embedding('sec-001') is not None
+    assert doc_repo.get_embedding('sec-002') is not None
+
+
+# ** test_int: search_similar
+def test_int_search_similar(doc_repo, sample_document):
+    '''Test brute-force cosine similarity search.'''
+
+    doc_repo.save(sample_document)
+
+    sec1 = DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='S1',
+        content_type='text', content='A', position=0,
+    )
+    sec2 = DocumentSectionAggregate(
+        id='sec-002', document_id='doc-001', title='S2',
+        content_type='text', content='B', position=1,
+    )
+    doc_repo.save_section(sec1)
+    doc_repo.save_section(sec2)
+
+    # sec-001 is aligned with query, sec-002 is orthogonal.
+    doc_repo.embed_section('sec-001', [1.0, 0.0, 0.0], 'test-model')
+    doc_repo.embed_section('sec-002', [0.0, 1.0, 0.0], 'test-model')
+
+    results = doc_repo.search_similar([1.0, 0.0, 0.0], limit=2)
+    assert len(results) == 2
+    assert results[0]['section_id'] == 'sec-001'
+    assert results[0]['score'] > results[1]['score']
+
+
+# ** test_int: search_similar_empty
+def test_int_search_similar_empty(doc_repo):
+    '''Test search when no embeddings exist.'''
+
+    results = doc_repo.search_similar([1.0, 0.0, 0.0])
+    assert results == []
+
+
+# ** test_int: remove_embedding
+def test_int_remove_embedding(doc_repo, sample_document, sample_section):
+    '''Test removing a section's embedding.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    doc_repo.embed_section('sec-001', [0.1, 0.2], 'test-model')
+    assert doc_repo.get_embedding('sec-001') is not None
+
+    doc_repo.remove_embedding('sec-001')
+    assert doc_repo.get_embedding('sec-001') is None
+
+
+# ** test_int: delete_section_cascades_embedding
+def test_int_delete_section_cascades_embedding(doc_repo, sample_document, sample_section):
+    '''Test that deleting a section also removes its embedding.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    doc_repo.embed_section('sec-001', [0.1, 0.2], 'test-model')
+
+    doc_repo.delete_section('sec-001')
+    assert doc_repo.get_embedding('sec-001') is None
+
+
+# ** test_int: delete_document_cascades_embeddings
+def test_int_delete_document_cascades_embeddings(doc_repo, sample_document):
+    '''Test that deleting a document removes all section embeddings.'''
+
+    doc_repo.save(sample_document)
+
+    sec1 = DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='S1',
+        content_type='text', content='A', position=0,
+    )
+    sec2 = DocumentSectionAggregate(
+        id='sec-002', document_id='doc-001', title='S2',
+        content_type='text', content='B', position=1,
+    )
+    doc_repo.save_section(sec1)
+    doc_repo.save_section(sec2)
+    doc_repo.embed_section('sec-001', [0.1, 0.2], 'test-model')
+    doc_repo.embed_section('sec-002', [0.3, 0.4], 'test-model')
+
+    doc_repo.delete('doc-001')
+    assert doc_repo.get_embedding('sec-001') is None
+    assert doc_repo.get_embedding('sec-002') is None

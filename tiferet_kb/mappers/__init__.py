@@ -19,6 +19,9 @@ from .template import (
     TemplateTableObject,
     TemplateSectionTableObject,
 )
+from .embedding import (
+    EmbeddingRecordAggregate,
+)
 from .folder import (
     FolderAggregate,
     FolderNodeObject,
