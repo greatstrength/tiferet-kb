@@ -393,9 +393,17 @@ class ApplyTemplate(DomainEvent):
                 document_id=document.id,
                 title=tmpl_section.title,
                 content_type=tmpl_section.content_type,
-                content=tmpl_section.default_content,
                 position=tmpl_section.position,
             )
+
+            # Parse the template's default content into paragraphs.
+            if tmpl_section.default_content:
+                from ..utils.markdown import parse_content_to_paragraphs
+                paragraphs = parse_content_to_paragraphs(
+                    tmpl_section.default_content, doc_section.id,
+                )
+                doc_section.set_paragraphs(paragraphs)
+
             self.document_service.save_section(doc_section)
 
         # Return the created document.

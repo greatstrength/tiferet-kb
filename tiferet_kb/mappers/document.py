@@ -4,7 +4,7 @@
 
 # ** core
 from datetime import datetime, timezone
-from typing import Any, ClassVar, Dict, List
+from typing import Any, ClassVar, Dict, List, Optional
 
 # ** infra
 import tables
@@ -12,9 +12,10 @@ from pydantic import Field
 
 # ** app
 from tiferet.mappers import Aggregate
-from tiferet_h5.mappers import TableObject
+from tiferet_h5.mappers import NodeObject, TableObject
 
 from ..domain.document import Document, DocumentSection
+from ..domain.segment import Paragraph
 
 # *** mappers
 
@@ -39,19 +40,49 @@ class DocumentSectionAggregate(DocumentSection, Aggregate):
         self.title = title
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
-    # * method: set_content
-    def set_content(self, content: str) -> None:
+    # * method: set_paragraphs
+    def set_paragraphs(self, paragraphs: List[Paragraph]) -> None:
         '''
-        Set the section content.
+        Replace the section's paragraphs with a new list.
 
-        :param content: The new content.
-        :type content: str
+        :param paragraphs: The new paragraphs.
+        :type paragraphs: List[Paragraph]
         :return: None
         :rtype: None
         '''
 
-        # Update the content and timestamp.
-        self.content = content
+        # Update the paragraphs and timestamp.
+        self.paragraphs = paragraphs
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    # * method: set_heading_level
+    def set_heading_level(self, heading_level: int) -> None:
+        '''
+        Set the section heading level.
+
+        :param heading_level: The new heading level (1-6).
+        :type heading_level: int
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the heading level and timestamp.
+        self.heading_level = heading_level
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    # * method: set_icon
+    def set_icon(self, icon: Optional[str]) -> None:
+        '''
+        Set the section icon.
+
+        :param icon: The new icon identifier, or None to clear.
+        :type icon: str | None
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the icon and timestamp.
+        self.icon = icon
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
     # * method: set_content_type
@@ -234,12 +265,15 @@ class DocumentTableObject(TableObject):
         return cls.model_validate(data)
 
 
-# ** mapper: document_section_table_object
-class DocumentSectionTableObject(TableObject):
+# ** mapper: document_section_node_object
+class DocumentSectionNodeObject(NodeObject):
     '''
-    An HDF5 table-row representation of a document section.
+    An HDF5 node-attribute representation of a document section.
 
-    Stored as rows in ``/kb/documents/document_sections``.
+    Section metadata is stored as attributes on an HDF5 group node
+    at ``/kb/documents/<doc_id>/sections/<section_id>``. The ``paragraphs``
+    field is excluded — paragraph and segment data live in a flat
+    ``segments`` table inside the section group.
     '''
 
     # * attribute: id
@@ -251,11 +285,14 @@ class DocumentSectionTableObject(TableObject):
     # * attribute: title
     title: str = Field(default='', description='Section heading.')
 
-    # * attribute: content_type
-    content_type: str = Field(default='', description='Content type.')
+    # * attribute: heading_level
+    heading_level: int = Field(default=2, description='Heading level.')
 
-    # * attribute: content
-    content: str = Field(default='', description='Raw section content.')
+    # * attribute: icon
+    icon: str = Field(default='', description='Icon identifier.')
+
+    # * attribute: content_type
+    content_type: str = Field(default='markdown', description='Content type.')
 
     # * attribute: position
     position: int = Field(default=0, description='Ordering position.')
@@ -266,22 +303,19 @@ class DocumentSectionTableObject(TableObject):
     # * attribute: updated_at
     updated_at: str = Field(default='', description='ISO 8601 last-updated timestamp.')
 
-    # * attribute: _H5_TYPES
-    _H5_TYPES: ClassVar[Dict[str, Any]] = {
-        'id':           tables.StringCol(64),
-        'document_id':  tables.StringCol(64),
-        'title':        tables.StringCol(512),
-        'content_type': tables.StringCol(32),
-        'content':      tables.StringCol(65536),
-        'position':     tables.Int32Col(),
-        'created_at':   tables.StringCol(32),
-        'updated_at':   tables.StringCol(32),
+    # * attribute: _ROLES
+    _ROLES: ClassVar[Dict[str, Dict[str, Any]]] = {
+        'to_model': {},
+        'to_h5.attrs': {
+            'by_alias': True,
+            'exclude': {'id', 'document_id', 'paragraphs'},
+        },
     }
 
     # * method: map
     def map(self, **overrides) -> DocumentSectionAggregate:
         '''
-        Map the table object data to a document section aggregate.
+        Map the node object data to a document section aggregate.
 
         :param overrides: Additional keyword arguments.
         :type overrides: dict
@@ -289,8 +323,10 @@ class DocumentSectionTableObject(TableObject):
         :rtype: DocumentSectionAggregate
         '''
 
-        # Serialize and construct the aggregate.
-        data = self.to_primitive()
+        # Serialize and clean empty icon.
+        data = self.to_primitive(role='to_model')
+        if data.get('icon') == '':
+            data['icon'] = None
         data.update(overrides)
 
         # Return the constructed aggregate.
@@ -298,21 +334,23 @@ class DocumentSectionTableObject(TableObject):
 
     # * method: from_model
     @classmethod
-    def from_model(cls, section: DocumentSection, **overrides) -> 'DocumentSectionTableObject':
+    def from_model(cls, section: DocumentSection, **overrides) -> 'DocumentSectionNodeObject':
         '''
-        Create a DocumentSectionTableObject from a DocumentSection model.
+        Create a DocumentSectionNodeObject from a DocumentSection model.
 
         :param section: The section model to copy from.
         :type section: DocumentSection
         :param overrides: Additional keyword arguments.
         :type overrides: dict
-        :return: A new DocumentSectionTableObject.
-        :rtype: DocumentSectionTableObject
+        :return: A new DocumentSectionNodeObject.
+        :rtype: DocumentSectionNodeObject
         '''
 
-        # Dump the model and construct the table object.
-        data = section.model_dump(by_alias=False)
+        # Dump the model, excluding paragraphs (stored separately).
+        data = section.model_dump(by_alias=False, exclude={'paragraphs'})
+        if data.get('icon') is None:
+            data['icon'] = ''
         data.update(overrides)
 
-        # Construct and return the table object.
+        # Construct and return the node object.
         return cls.model_validate(data)

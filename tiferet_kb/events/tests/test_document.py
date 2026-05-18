@@ -55,7 +55,7 @@ def sample_section() -> DocumentSectionAggregate:
         document_id='doc-001',
         title='Introduction',
         content_type='markdown',
-        content='# Hello',
+        heading_level=2,
         position=0,
         created_at='2026-01-01T00:00:00+00:00',
         updated_at='2026-01-01T00:00:00+00:00',
@@ -260,14 +260,16 @@ def test_add_document_section_success(mock_document_service):
         dependencies={'document_service': mock_document_service},
         document_id='doc-001',
         title='Introduction',
-        content_type='markdown',
-        content='# Hello',
+        content='Hello **world**',
     )
 
     assert result.title == 'Introduction'
     assert result.content_type == 'markdown'
     assert result.document_id == 'doc-001'
     assert result.position == 0
+    # Verify paragraphs were parsed from markdown content.
+    assert len(result.paragraphs) == 1
+    assert result.paragraphs[0].segments[1].format_type == 'bold'
     mock_document_service.save_section.assert_called_once()
 
 
@@ -282,7 +284,6 @@ def test_add_document_section_with_position(mock_document_service):
         dependencies={'document_service': mock_document_service},
         document_id='doc-001',
         title='Middle Section',
-        content_type='text',
         position=1,
     )
 
@@ -292,6 +293,8 @@ def test_add_document_section_with_position(mock_document_service):
 # ** test: add_document_section_invalid_content_type
 def test_add_document_section_invalid_content_type(mock_document_service):
     '''Test that an invalid content type raises.'''
+
+    mock_document_service.exists.return_value = True
 
     with pytest.raises(TiferetError):
         DomainEvent.handle(
@@ -320,8 +323,8 @@ def test_add_document_section_document_not_found(mock_document_service):
 
 
 # ** test: add_document_section_missing_params
-def test_add_document_section_missing_params(mock_document_service):
-    '''Test that missing required params raise.'''
+def test_add_document_section_missing_title(mock_document_service):
+    '''Test that missing title raises.'''
 
     with pytest.raises(TiferetError):
         DomainEvent.handle(
@@ -333,7 +336,7 @@ def test_add_document_section_missing_params(mock_document_service):
 
 # ** test: update_document_section_success
 def test_update_document_section_success(mock_document_service, sample_section):
-    '''Test successful update of a section attribute.'''
+    '''Test successful update of a section via content re-parse.'''
 
     mock_document_service.get_sections.return_value = [sample_section]
 
@@ -342,11 +345,13 @@ def test_update_document_section_success(mock_document_service, sample_section):
         dependencies={'document_service': mock_document_service},
         id='sec-001',
         attribute='content',
-        value='Updated content',
+        value='Updated **content**',
         document_id='doc-001',
     )
 
-    assert result.content == 'Updated content'
+    # Content was re-parsed into paragraphs with formatting.
+    assert len(result.paragraphs) == 1
+    assert result.paragraphs[0].segments[1].format_type == 'bold'
     mock_document_service.save_section.assert_called_once()
 
 

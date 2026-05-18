@@ -34,7 +34,6 @@ def sample_sections():
             document_id='doc-001',
             title='Introduction',
             content_type='markdown',
-            content='Hello world.',
             position=0,
         ),
         DocumentSectionAggregate(
@@ -42,7 +41,6 @@ def sample_sections():
             document_id='doc-001',
             title='Conclusion',
             content_type='markdown',
-            content='Goodbye world.',
             position=1,
         ),
     ]

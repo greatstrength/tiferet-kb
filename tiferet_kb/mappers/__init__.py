@@ -11,7 +11,10 @@ from .document import (
     DocumentAggregate,
     DocumentSectionAggregate,
     DocumentTableObject,
-    DocumentSectionTableObject,
+    DocumentSectionNodeObject,
+)
+from .segment import (
+    HybridSegmentTableObject,
 )
 from .template import (
     TemplateAggregate,

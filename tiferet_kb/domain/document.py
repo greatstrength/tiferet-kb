@@ -13,6 +13,8 @@ from pydantic import Field, model_validator
 # ** app
 from tiferet.domain import DomainObject
 
+from .segment import Paragraph
+
 # *** models
 
 # ** model: document_section
@@ -20,9 +22,9 @@ class DocumentSection(DomainObject):
     '''
     A section within a knowledge base document.
 
-    Each section holds a block of content with a specific type
-    (e.g. text, markdown, code) and an explicit ordering position
-    within its parent document.
+    Each section is stored as an HDF5 group node with metadata attributes
+    and a single flat segments table containing rich-text content decomposed
+    into paragraphs and text segments with formatting metadata.
     '''
 
     # * attribute: id
@@ -43,16 +45,22 @@ class DocumentSection(DomainObject):
         description='Section heading.',
     )
 
-    # * attribute: content_type
-    content_type: str = Field(
-        ...,
-        description='Content type: text, markdown, code, table, or image.',
+    # * attribute: heading_level
+    heading_level: int = Field(
+        default=2,
+        description='Heading level (1-6).',
     )
 
-    # * attribute: content
-    content: str = Field(
-        default='',
-        description='Raw section content.',
+    # * attribute: icon
+    icon: Optional[str] = Field(
+        default=None,
+        description='Optional icon identifier for the section.',
+    )
+
+    # * attribute: content_type
+    content_type: str = Field(
+        default='markdown',
+        description='Section rendering mode: markdown, text, or code.',
     )
 
     # * attribute: position
@@ -71,6 +79,12 @@ class DocumentSection(DomainObject):
     updated_at: str = Field(
         ...,
         description='ISO 8601 last-updated timestamp.',
+    )
+
+    # * attribute: paragraphs
+    paragraphs: List[Paragraph] = Field(
+        default_factory=list,
+        description='Ordered list of paragraphs with rich-text segments.',
     )
 
     # * method: _derive_defaults (validator)

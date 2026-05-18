@@ -44,7 +44,7 @@ def test_document_optional_fields_default_none():
 def test_document_get_section():
     '''Test get_section returns the correct section by position.'''
 
-    section = DocumentSection(document_id='doc1', title='Intro', content_type='text', position=0)
+    section = DocumentSection(document_id='doc1', title='Intro', position=0)
     doc = Document(title='Test Doc', sections=[section])
     assert doc.get_section(0) is not None
     assert doc.get_section(0).title == 'Intro'
@@ -58,7 +58,7 @@ def test_document_section_count():
     doc = Document(title='Test Doc')
     assert doc.section_count() == 0
 
-    section = DocumentSection(document_id='doc1', title='Intro', content_type='text', position=0)
+    section = DocumentSection(document_id='doc1', title='Intro', position=0)
     doc2 = Document(title='Test Doc', sections=[section])
     assert doc2.section_count() == 1
 
@@ -67,10 +67,12 @@ def test_document_section_count():
 def test_document_section_auto_generates_defaults():
     '''Test that DocumentSection auto-generates id and timestamps.'''
 
-    section = DocumentSection(document_id='doc1', title='Intro', content_type='text', position=0)
+    section = DocumentSection(document_id='doc1', title='Intro', position=0)
     assert section.id is not None and len(section.id) == 36
     assert section.created_at is not None
-    assert section.content == ''
+    assert section.heading_level == 2
+    assert section.content_type == 'markdown'
+    assert section.paragraphs == []
 
 
 # ** test: document_rejects_extra_fields

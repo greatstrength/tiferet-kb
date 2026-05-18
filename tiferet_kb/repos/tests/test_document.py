@@ -48,7 +48,6 @@ def sample_section() -> DocumentSectionAggregate:
         document_id='doc-001',
         title='Introduction',
         content_type='markdown',
-        content='# Hello World',
         position=0,
         created_at='2026-01-01T00:00:00+00:00',
         updated_at='2026-01-01T00:00:00+00:00',
@@ -97,7 +96,6 @@ def test_int_get_with_sections(doc_repo, sample_document, sample_section):
     assert result is not None
     assert len(result.sections) == 1
     assert result.sections[0].title == 'Introduction'
-    assert result.sections[0].content == '# Hello World'
 
 
 # ** test_int: get_not_found
@@ -148,15 +146,15 @@ def test_int_list_include_sections(doc_repo):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='Intro',
-        content_type='text', content='Hello', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='Body',
-        content_type='markdown', content='## Content', position=1,
+        content_type='markdown', position=1,
     )
     sec3 = DocumentSectionAggregate(
         id='sec-003', document_id='doc-002', title='Summary',
-        content_type='text', content='World', position=0,
+        content_type='text', position=0,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)
@@ -181,7 +179,7 @@ def test_int_list_default_no_sections(doc_repo):
     doc_repo.save(DocumentAggregate(id='doc-001', title='Doc 1', status='draft'))
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='Intro',
-        content_type='text', content='Hello', position=0,
+        content_type='text', position=0,
     )
     doc_repo.save_section(sec1)
 
@@ -235,11 +233,11 @@ def test_int_save_section_and_get_sections(doc_repo, sample_document):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='Intro',
-        content_type='text', content='Hello', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='Body',
-        content_type='markdown', content='## Content', position=1,
+        content_type='markdown', position=1,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)
@@ -257,12 +255,12 @@ def test_int_save_section_upsert(doc_repo, sample_document, sample_section):
     doc_repo.save(sample_document)
     doc_repo.save_section(sample_section)
 
-    sample_section.set_content('Updated content')
+    sample_section.rename('Updated Title')
     doc_repo.save_section(sample_section)
 
     sections = doc_repo.get_sections('doc-001')
     assert len(sections) == 1
-    assert sections[0].content == 'Updated content'
+    assert sections[0].title == 'Updated Title'
 
 
 # ** test_int: delete_section
@@ -284,11 +282,11 @@ def test_int_reorder_sections(doc_repo, sample_document):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='First',
-        content_type='text', content='A', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='Second',
-        content_type='text', content='B', position=1,
+        content_type='text', position=1,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)
@@ -349,11 +347,11 @@ def test_int_embed_multiple_sections(doc_repo, sample_document):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='S1',
-        content_type='text', content='A', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='S2',
-        content_type='text', content='B', position=1,
+        content_type='text', position=1,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)
@@ -373,11 +371,11 @@ def test_int_search_similar(doc_repo, sample_document):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='S1',
-        content_type='text', content='A', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='S2',
-        content_type='text', content='B', position=1,
+        content_type='text', position=1,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)
@@ -434,11 +432,11 @@ def test_int_delete_document_cascades_embeddings(doc_repo, sample_document):
 
     sec1 = DocumentSectionAggregate(
         id='sec-001', document_id='doc-001', title='S1',
-        content_type='text', content='A', position=0,
+        content_type='text', position=0,
     )
     sec2 = DocumentSectionAggregate(
         id='sec-002', document_id='doc-001', title='S2',
-        content_type='text', content='B', position=1,
+        content_type='text', position=1,
     )
     doc_repo.save_section(sec1)
     doc_repo.save_section(sec2)

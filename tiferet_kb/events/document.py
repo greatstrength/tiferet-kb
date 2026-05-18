@@ -12,6 +12,7 @@ from ..assets import constants as const
 from ..domain.document import Document, DocumentSection
 from ..interfaces.document import DocumentService
 from ..mappers.document import DocumentAggregate, DocumentSectionAggregate
+from ..utils.markdown import parse_content_to_paragraphs
 
 # *** events
 
@@ -373,36 +374,46 @@ class AddDocumentSection(DomainEvent):
         self.document_service = document_service
 
     # * method: execute
-    @DomainEvent.parameters_required(['document_id', 'title', 'content_type'])
+    @DomainEvent.parameters_required(['document_id', 'title'])
     def execute(self,
             document_id: str,
             title: str,
-            content_type: str,
             content: str = '',
+            content_type: str = 'markdown',
+            heading_level: int = 2,
+            icon: str | None = None,
             position: int | None = None,
             **kwargs,
         ) -> DocumentSection:
         '''
         Add a new section to a document.
 
+        Accepts markdown content which is parsed into paragraphs and
+        text segments with formatting metadata. The returned section
+        carries structured rich-text data for UI rendering.
+
         :param document_id: The parent document identifier.
         :type document_id: str
         :param title: The section heading.
         :type title: str
-        :param content_type: The content type (text, markdown, code, table, image).
-        :type content_type: str
-        :param content: The section content.
+        :param content: The markdown content to parse into paragraphs/segments.
         :type content: str
+        :param content_type: The section rendering mode (markdown, text, code).
+        :type content_type: str
+        :param heading_level: The heading level (1-6).
+        :type heading_level: int
+        :param icon: Optional icon identifier.
+        :type icon: str | None
         :param position: Optional position; defaults to appending at the end.
         :type position: int | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
-        :return: The created section.
+        :return: The created section with structured paragraphs/segments.
         :rtype: DocumentSection
         '''
 
         # Validate content type.
-        valid_types = {'text', 'markdown', 'code', 'table', 'image'}
+        valid_types = {'text', 'markdown', 'code'}
         self.verify(
             expression=content_type in valid_types,
             error_code=const.KB_INVALID_CONTENT_TYPE_ID,
@@ -422,14 +433,20 @@ class AddDocumentSection(DomainEvent):
             existing = self.document_service.get_sections(document_id)
             position = len(existing)
 
-        # Create the section aggregate.
+        # Create the section aggregate (UUID auto-generated).
         section = DocumentSectionAggregate(
             document_id=document_id,
             title=title,
             content_type=content_type,
-            content=content,
+            heading_level=heading_level,
+            icon=icon,
             position=position,
         )
+
+        # Parse markdown content into paragraphs with segments.
+        if content:
+            paragraphs = parse_content_to_paragraphs(content, section.id)
+            section.set_paragraphs(paragraphs)
 
         # Persist the new section.
         self.document_service.save_section(section)
@@ -472,20 +489,23 @@ class UpdateDocumentSection(DomainEvent):
         '''
         Update a section attribute.
 
+        Supports updating ``title``, ``content`` (re-parsed into paragraphs/segments),
+        ``content_type``, ``heading_level``, and ``icon``.
+
         :param id: The section identifier.
         :type id: str
-        :param attribute: The attribute to update (title, content, content_type).
+        :param attribute: The attribute to update.
         :type attribute: str
         :param value: The new value.
         :type value: Any
-        :param kwargs: Additional keyword arguments.
+        :param kwargs: Additional keyword arguments (must include ``document_id``).
         :type kwargs: dict
         :return: The updated section.
         :rtype: DocumentSection
         '''
 
         # Validate that the attribute is supported.
-        valid_attributes = {'title', 'content', 'content_type'}
+        valid_attributes = {'title', 'content', 'content_type', 'heading_level', 'icon'}
         self.verify(
             expression=attribute in valid_attributes,
             error_code=const.KB_INVALID_SECTION_ATTRIBUTE_ID,
@@ -495,7 +515,7 @@ class UpdateDocumentSection(DomainEvent):
 
         # Validate content_type values.
         if attribute == 'content_type':
-            valid_types = {'text', 'markdown', 'code', 'table', 'image'}
+            valid_types = {'text', 'markdown', 'code'}
             self.verify(
                 expression=value in valid_types,
                 error_code=const.KB_INVALID_CONTENT_TYPE_ID,
@@ -511,22 +531,7 @@ class UpdateDocumentSection(DomainEvent):
                 message='A section title is required.',
             )
 
-        # Retrieve the section. Search across all sections to find by id.
-        # We need to find which document owns this section first.
-        # Use get_sections with a broad search via the document_id from the section.
-        # For now, we rely on the caller providing context or we search.
-        # The simplest approach: load all sections and find by id.
-        # This is acceptable for the section event pattern where id is known.
-
-        # We need the document_id to retrieve sections. Since sections are
-        # stored in a flat table, the repository can query by section id directly.
-        # However, our current interface returns sections by document_id.
-        # For update, we'll retrieve the document that owns this section
-        # by querying the section table directly via the repository.
-
-        # Retrieve sections — the service needs a way to get a single section.
-        # We'll work around this by using the document_id if available in kwargs,
-        # or by fetching from the repository directly.
+        # Require document_id to locate the section group.
         document_id = kwargs.get('document_id')
         self.verify(
             expression=document_id is not None,
@@ -550,9 +555,15 @@ class UpdateDocumentSection(DomainEvent):
         if attribute == 'title':
             section.rename(value)
         elif attribute == 'content':
-            section.set_content(value)
+            # Re-parse the markdown content into paragraphs/segments.
+            paragraphs = parse_content_to_paragraphs(value or '', section.id)
+            section.set_paragraphs(paragraphs)
         elif attribute == 'content_type':
             section.set_content_type(value)
+        elif attribute == 'heading_level':
+            section.set_heading_level(value)
+        elif attribute == 'icon':
+            section.set_icon(value)
 
         # Persist the updated section.
         self.document_service.save_section(section)

@@ -14,7 +14,7 @@ from ..document import (
     DocumentAggregate,
     DocumentSectionAggregate,
     DocumentTableObject,
-    DocumentSectionTableObject,
+    DocumentSectionNodeObject,
 )
 from .settings import AggregateTestBase
 
@@ -40,15 +40,16 @@ SECTION_SAMPLE_DATA = {
     'id': 'sec-001',
     'document_id': 'doc-001',
     'title': 'Introduction',
+    'heading_level': 2,
+    'icon': None,
     'content_type': 'markdown',
-    'content': '# Hello World',
     'position': 0,
     'created_at': '2026-01-01T00:00:00+00:00',
     'updated_at': '2026-01-01T00:00:00+00:00',
 }
 
 # ** constant: section_equality_fields
-SECTION_EQUALITY_FIELDS = ['id', 'document_id', 'title', 'content_type', 'content', 'position']
+SECTION_EQUALITY_FIELDS = ['id', 'document_id', 'title', 'heading_level', 'content_type', 'position']
 
 
 # *** classes
@@ -109,10 +110,10 @@ class TestDocumentSectionAggregate(AggregateTestBase):
     equality_fields = SECTION_EQUALITY_FIELDS
 
     set_attribute_params = [
-        ('title',        'Updated Section', None),
-        ('content',      'New content',     None),
-        ('content_type', 'code',            None),
-        ('invalid_attr', 'value',           'INVALID_MODEL_ATTRIBUTE'),
+        ('title',         'Updated Section', None),
+        ('heading_level', 3,                 None),
+        ('content_type',  'code',            None),
+        ('invalid_attr',  'value',           'INVALID_MODEL_ATTRIBUTE'),
     ]
 
     # *** domain-specific mutation tests
@@ -126,12 +127,12 @@ class TestDocumentSectionAggregate(AggregateTestBase):
         assert aggregate.title == 'Updated Section'
         assert aggregate.updated_at != old_updated
 
-    # ** test: set_content
-    def test_set_content(self, aggregate):
-        '''Test set_content mutation.'''
+    # ** test: set_heading_level
+    def test_set_heading_level(self, aggregate):
+        '''Test set_heading_level mutation.'''
 
-        aggregate.set_content('New content here')
-        assert aggregate.content == 'New content here'
+        aggregate.set_heading_level(3)
+        assert aggregate.heading_level == 3
 
     # ** test: set_content_type
     def test_set_content_type(self, aggregate):
@@ -150,17 +151,6 @@ def doc_h5_table(tmp_path: Path):
     h5_path = tmp_path / 'test.h5'
     h5file = tables.open_file(str(h5_path), mode='w')
     table = h5file.create_table('/', 'documents', DocumentTableObject.get_description())
-    yield table
-    h5file.close()
-
-
-# ** fixture: section_h5_table
-@pytest.fixture
-def section_h5_table(tmp_path: Path):
-    '''Open a temporary HDF5 file and yield a live section table.'''
-    h5_path = tmp_path / 'test_sections.h5'
-    h5file = tables.open_file(str(h5_path), mode='w')
-    table = h5file.create_table('/', 'sections', DocumentSectionTableObject.get_description())
     yield table
     h5file.close()
 
@@ -208,23 +198,3 @@ def test_document_table_object_from_model_converts_none_to_empty():
     assert obj.folder_id == ''
 
 
-# ** test: section_table_object_round_trip
-def test_section_table_object_round_trip(section_h5_table):
-    '''Test DocumentSectionTableObject to_row/from_row round-trip.'''
-
-    obj = DocumentSectionTableObject(
-        id='sec-001', document_id='doc-001', title='Intro',
-        content_type='markdown', content='# Hello', position=0,
-        created_at='2026-01-01T00:00:00', updated_at='2026-01-01T00:00:00',
-    )
-    obj.to_row(section_h5_table)
-    section_h5_table.flush()
-
-    rows = list(section_h5_table.iterrows())
-    assert len(rows) == 1
-
-    restored = DocumentSectionTableObject.from_row(rows[0])
-    assert restored.id == 'sec-001'
-    assert restored.title == 'Intro'
-    assert restored.content == '# Hello'
-    assert restored.position == 0

@@ -12,12 +12,14 @@ import numpy as np
 from tiferet_h5.repos import H5Repository
 
 from ..interfaces.document import DocumentService
+from ..domain.segment import TextSegment, Paragraph
 from ..mappers.document import (
     DocumentAggregate,
     DocumentSectionAggregate,
     DocumentTableObject,
-    DocumentSectionTableObject,
+    DocumentSectionNodeObject,
 )
+from ..mappers.segment import HybridSegmentTableObject
 
 # *** constants
 
@@ -26,9 +28,6 @@ DOCUMENTS_GROUP = '/kb/documents'
 
 # ** constant: documents_table
 DOCUMENTS_TABLE = '/kb/documents/documents'
-
-# ** constant: sections_table
-SECTIONS_TABLE = '/kb/documents/document_sections'
 
 # ** constant: embeddings_array
 EMBEDDINGS_ARRAY = '/kb/documents/section_embeddings'
@@ -110,17 +109,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Map the document header.
             doc = DocumentTableObject.from_row(doc_rows[0]).map()
 
-            # Load sections if the sections table exists.
-            if h5.node_exists(SECTIONS_TABLE):
-                section_rows = h5.read_rows(
-                    SECTIONS_TABLE,
-                    condition=f'(document_id == b"{id}")',
-                )
-                sections = sorted(
-                    [DocumentSectionTableObject.from_row(r).map() for r in section_rows],
-                    key=lambda s: s.position,
-                )
-                doc.sections = sections
+            # Load sections from group nodes.
+            doc.sections = self._read_sections(h5, id)
 
         # Return the assembled document.
         return doc
@@ -170,16 +160,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
             docs = [DocumentTableObject.from_row(r).map() for r in rows]
 
             # Optionally load sections for each document.
-            if include_sections and h5.node_exists(SECTIONS_TABLE):
+            if include_sections:
                 for doc in docs:
-                    section_rows = h5.read_rows(
-                        SECTIONS_TABLE,
-                        condition=f'(document_id == b"{doc.id}")',
-                    )
-                    doc.sections = sorted(
-                        [DocumentSectionTableObject.from_row(r).map() for r in section_rows],
-                        key=lambda s: s.position,
-                    )
+                    doc.sections = self._read_sections(h5, doc.id)
 
         # Return the document list.
         return docs
@@ -251,21 +234,20 @@ class DocumentH5Repository(H5Repository, DocumentService):
         with self.client() as h5:
 
             # Collect section IDs before deleting, for embedding cleanup.
+            sections_group = f'{DOCUMENTS_GROUP}/{id}/sections'
             section_ids = []
-            if h5.node_exists(SECTIONS_TABLE):
-                section_rows = h5.read_rows(
-                    SECTIONS_TABLE,
-                    condition=f'(document_id == b"{id}")',
-                )
-                section_ids = [r['id'] for r in section_rows]
+            if h5.node_exists(sections_group):
+                root = h5.get_group(sections_group)
+                section_ids = list(root._v_children.keys())
 
             # Remove the document row if the table exists.
             if h5.node_exists(DOCUMENTS_TABLE):
                 h5.remove_rows(DOCUMENTS_TABLE, f'(id == b"{id}")')
 
-            # Cascade: remove all section rows for this document.
-            if h5.node_exists(SECTIONS_TABLE):
-                h5.remove_rows(SECTIONS_TABLE, f'(document_id == b"{id}")')
+            # Cascade: remove all section groups for this document.
+            doc_group = f'{DOCUMENTS_GROUP}/{id}'
+            if h5.node_exists(doc_group):
+                h5.h5file.remove_node(doc_group, recursive=True)
 
             # Cascade: remove embeddings for all deleted sections.
             if section_ids:
@@ -283,27 +265,15 @@ class DocumentH5Repository(H5Repository, DocumentService):
         '''
 
         with self.client() as h5:
-
-            # Return empty if the sections table does not exist.
-            if not h5.node_exists(SECTIONS_TABLE):
-                return []
-
-            # Query sections by document_id.
-            rows = h5.read_rows(
-                SECTIONS_TABLE,
-                condition=f'(document_id == b"{document_id}")',
-            )
-
-        # Map and sort by position.
-        return sorted(
-            [DocumentSectionTableObject.from_row(r).map() for r in rows],
-            key=lambda s: s.position,
-        )
+            return self._read_sections(h5, document_id)
 
     # * method: save_section
     def save_section(self, section: DocumentSectionAggregate) -> None:
         '''
         Save or update a document section (upsert).
+
+        Creates a section group node with metadata attributes and a flat
+        segments table containing denormalized paragraph data.
 
         :param section: The document section aggregate to save.
         :type section: DocumentSectionAggregate
@@ -311,46 +281,76 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :rtype: None
         '''
 
-        # Convert to table object.
-        table_obj = DocumentSectionTableObject.from_model(section)
-
         with self.client() as h5:
 
-            # Ensure the parent group exists.
+            # Ensure parent groups exist.
             self._ensure_group(h5)
+            doc_group = f'{DOCUMENTS_GROUP}/{section.document_id}'
+            sections_group = f'{doc_group}/sections'
+            self._ensure_path(h5, sections_group)
+            section_group = f'{sections_group}/{section.id}'
 
-            # Get or create the sections table.
-            t = h5.get_or_create_table(
-                SECTIONS_TABLE,
-                DocumentSectionTableObject.get_description(),
-                title='Document Sections',
+            # If section group already exists, remove it (upsert).
+            if h5.node_exists(section_group):
+                h5.h5file.remove_node(section_group, recursive=True)
+
+            # Create the section group.
+            h5.create_group(section_group, title=section.title)
+
+            # Write section attributes.
+            node_obj = DocumentSectionNodeObject.from_model(section)
+            for attr_name, attr_value in node_obj.to_attrs().items():
+                h5.set_node_attr(section_group, attr_name, attr_value)
+
+            # Create the flat segments table.
+            segments_path = f'{section_group}/segments'
+            t = h5.create_table(
+                segments_path,
+                HybridSegmentTableObject.get_description(),
+                title='Segments',
             )
 
-            # Remove existing row if present (upsert).
-            if h5.read_rows(SECTIONS_TABLE, condition=f'(id == b"{section.id}")'):
-                h5.remove_rows(SECTIONS_TABLE, f'(id == b"{section.id}")')
+            # Write all segments with denormalized paragraph metadata.
+            for paragraph in section.paragraphs:
+                for segment in paragraph.segments:
+                    obj = HybridSegmentTableObject(
+                        paragraph_id=paragraph.id,
+                        paragraph_position=paragraph.position,
+                        block_type=paragraph.block_type,
+                        id=segment.id,
+                        position=segment.position,
+                        text=segment.text,
+                        format_type=segment.format_type,
+                        link_url=segment.link_url or '',
+                    )
+                    obj.to_row(t)
 
-            # Append the new row.
-            table_obj.to_row(t)
             t.flush()
 
     # * method: delete_section
-    def delete_section(self, section_id: str) -> None:
+    def delete_section(self, section_id: str, document_id: str = None) -> None:
         '''
         Delete a document section by ID (idempotent).
         Also removes any embedding associated with the section.
 
         :param section_id: The section identifier.
         :type section_id: str
+        :param document_id: The parent document identifier (needed to locate the section group).
+        :type document_id: str
         :return: None
         :rtype: None
         '''
 
         with self.client() as h5:
 
-            # Remove the section row if the table exists.
-            if h5.node_exists(SECTIONS_TABLE):
-                h5.remove_rows(SECTIONS_TABLE, f'(id == b"{section_id}")')
+            # Find and remove the section group.
+            if document_id:
+                section_group = f'{DOCUMENTS_GROUP}/{document_id}/sections/{section_id}'
+                if h5.node_exists(section_group):
+                    h5.h5file.remove_node(section_group, recursive=True)
+            else:
+                # Search all document groups for the section.
+                self._find_and_remove_section(h5, section_id)
 
             # Cascade: remove the section's embedding.
             self._remove_embedding_by_section_id(h5, section_id)
@@ -358,7 +358,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
     # * method: reorder_sections
     def reorder_sections(self, document_id: str, section_ids: List[str]) -> None:
         '''
-        Reorder sections within a document.
+        Reorder sections within a document by updating position attributes.
 
         :param document_id: The parent document identifier.
         :type document_id: str
@@ -370,34 +370,17 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
         with self.client() as h5:
 
-            # Return if the sections table does not exist.
-            if not h5.node_exists(SECTIONS_TABLE):
+            sections_group = f'{DOCUMENTS_GROUP}/{document_id}/sections'
+
+            # Return if the sections group does not exist.
+            if not h5.node_exists(sections_group):
                 return
 
-            # Load all sections for this document.
-            rows = h5.read_rows(
-                SECTIONS_TABLE,
-                condition=f'(document_id == b"{document_id}")',
-            )
-
-            # Index sections by id.
-            sections_by_id = {r['id']: r for r in rows}
-
-            # Remove all existing section rows for this document.
-            h5.remove_rows(SECTIONS_TABLE, f'(document_id == b"{document_id}")')
-
-            # Re-append in the new order with updated positions.
-            t = h5.get_table(SECTIONS_TABLE)
+            # Update position attribute on each section group.
             for position, section_id in enumerate(section_ids):
-                if section_id not in sections_by_id:
-                    continue
-                section_data = sections_by_id[section_id]
-                section_data['position'] = position
-                obj = DocumentSectionTableObject.from_row(section_data)
-                obj.position = position
-                obj.to_row(t)
-
-            t.flush()
+                section_path = f'{sections_group}/{section_id}'
+                if h5.node_exists(section_path):
+                    h5.set_node_attr(section_path, 'position', position)
 
     # * method: embed_section
     def embed_section(self,
@@ -674,6 +657,123 @@ class DocumentH5Repository(H5Repository, DocumentService):
             h5.create_array(EMBEDDINGS_ARRAY, embeddings[mask], title='Section Embeddings')
             h5.create_array(EMBEDDING_IDS_ARRAY, ids_raw[mask], title='Section Embedding IDs')
 
+    # * method: _ensure_path
+    def _ensure_path(self, h5, path: str) -> None:
+        '''
+        Create an HDF5 group at path if it does not exist, creating parents level-by-level.
+
+        :param h5: The open H5Client instance.
+        :param path: The target HDF5 group path.
+        :type path: str
+        :return: None
+        :rtype: None
+        '''
+
+        if h5.node_exists(path):
+            return
+
+        # Split the path into segments and create each level.
+        parts = [p for p in path.split('/') if p]
+        for i in range(len(parts)):
+            partial = '/' + '/'.join(parts[:i + 1])
+            if not h5.node_exists(partial):
+                h5.create_group(partial, title='')
+
+    # * method: _read_sections
+    def _read_sections(self, h5, document_id: str) -> List[DocumentSectionAggregate]:
+        '''
+        Read all sections for a document from group nodes, fully populating paragraphs.
+
+        Called within an already-open ``h5`` context.
+
+        :param h5: The open H5Client instance.
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :return: A list of document section aggregates.
+        :rtype: List[DocumentSectionAggregate]
+        '''
+
+        sections_group = f'{DOCUMENTS_GROUP}/{document_id}/sections'
+
+        if not h5.node_exists(sections_group):
+            return []
+
+        sections_root = h5.get_group(sections_group)
+        sections: List[DocumentSectionAggregate] = []
+
+        for child in sections_root._v_children.values():
+            section_id = child._v_name
+            section_path = child._v_pathname
+
+            # Read section attributes.
+            section_attrs = h5.get_node_attrs(section_path)
+            section_obj = DocumentSectionNodeObject.from_attrs(
+                section_attrs, id=section_id, document_id=document_id,
+            )
+
+            # Read segments table and reconstruct paragraphs.
+            segments_path = f'{section_path}/segments'
+            paragraphs: List[Paragraph] = []
+
+            if h5.node_exists(segments_path):
+                rows = h5.read_rows(segments_path)
+
+                # Group rows by paragraph_id.
+                para_map: Dict[str, dict] = {}
+                for row in rows:
+                    pid = row['paragraph_id']
+                    if pid not in para_map:
+                        para_map[pid] = {
+                            'id': pid,
+                            'section_id': section_id,
+                            'position': row['paragraph_position'],
+                            'block_type': row['block_type'],
+                            'segments': [],
+                        }
+                    link_url = row.get('link_url', '')
+                    para_map[pid]['segments'].append(TextSegment(
+                        id=row['id'],
+                        position=row['position'],
+                        text=row['text'],
+                        format_type=row['format_type'],
+                        link_url=link_url if link_url else None,
+                    ))
+
+                # Sort segments within each paragraph.
+                for pdata in para_map.values():
+                    pdata['segments'].sort(key=lambda s: s.position)
+                    paragraphs.append(Paragraph(**pdata))
+
+                paragraphs.sort(key=lambda p: p.position)
+
+            section = section_obj.map(paragraphs=paragraphs)
+            sections.append(section)
+
+        sections.sort(key=lambda s: s.position)
+        return sections
+
+    # * method: _find_and_remove_section
+    def _find_and_remove_section(self, h5, section_id: str) -> None:
+        '''
+        Search all document groups for a section and remove it.
+
+        :param h5: The open H5Client instance.
+        :param section_id: The section identifier to find and remove.
+        :type section_id: str
+        :return: None
+        :rtype: None
+        '''
+
+        if not h5.node_exists(DOCUMENTS_GROUP):
+            return
+
+        docs_root = h5.get_group(DOCUMENTS_GROUP)
+        for doc_child in docs_root._v_children.values():
+            section_path = f'{doc_child._v_pathname}/sections/{section_id}'
+            if h5.node_exists(section_path):
+                h5.h5file.remove_node(section_path, recursive=True)
+                return
+
     # * method: _get_filtered_section_ids
     def _get_filtered_section_ids(self,
             h5,
@@ -707,16 +807,12 @@ class DocumentH5Repository(H5Repository, DocumentService):
         doc_rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
         doc_ids = {r['id'] for r in doc_rows}
 
-        # Get section IDs for those documents.
-        if not doc_ids or not h5.node_exists(SECTIONS_TABLE):
-            return set()
-
+        # Get section IDs from group nodes for those documents.
         section_ids = set()
         for doc_id in doc_ids:
-            section_rows = h5.read_rows(
-                SECTIONS_TABLE,
-                condition=f'(document_id == b"{doc_id}")',
-            )
-            section_ids.update(r['id'] for r in section_rows)
+            sections_group = f'{DOCUMENTS_GROUP}/{doc_id}/sections'
+            if h5.node_exists(sections_group):
+                root = h5.get_group(sections_group)
+                section_ids.update(root._v_children.keys())
 
         return section_ids
