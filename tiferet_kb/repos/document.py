@@ -130,6 +130,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
             status: Optional[str] = None,
+            include_sections: bool = False,
         ) -> List[DocumentAggregate]:
         '''
         List documents with optional filters.
@@ -140,7 +141,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :type category_id: str | None
         :param status: Optional status to filter by.
         :type status: str | None
-        :return: A list of document aggregates (without sections).
+        :param include_sections: If True, populate sections for each document.
+        :type include_sections: bool
+        :return: A list of document aggregates.
         :rtype: List[DocumentAggregate]
         '''
 
@@ -163,8 +166,23 @@ class DocumentH5Repository(H5Repository, DocumentService):
             condition = ' & '.join(conditions) if conditions else None
             rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
 
-        # Map each row to an aggregate (without sections for list view).
-        return [DocumentTableObject.from_row(r).map() for r in rows]
+            # Map each row to an aggregate.
+            docs = [DocumentTableObject.from_row(r).map() for r in rows]
+
+            # Optionally load sections for each document.
+            if include_sections and h5.node_exists(SECTIONS_TABLE):
+                for doc in docs:
+                    section_rows = h5.read_rows(
+                        SECTIONS_TABLE,
+                        condition=f'(document_id == b"{doc.id}")',
+                    )
+                    doc.sections = sorted(
+                        [DocumentSectionTableObject.from_row(r).map() for r in section_rows],
+                        key=lambda s: s.position,
+                    )
+
+        # Return the document list.
+        return docs
 
     # * method: save
     def save(self, document: DocumentAggregate) -> None:

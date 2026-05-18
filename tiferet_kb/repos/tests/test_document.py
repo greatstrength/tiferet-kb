@@ -139,6 +139,57 @@ def test_int_list_empty(doc_repo):
     assert result == []
 
 
+# ** test_int: list_include_sections
+def test_int_list_include_sections(doc_repo):
+    '''Test that list(include_sections=True) returns documents with sections populated.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc 1', status='draft'))
+    doc_repo.save(DocumentAggregate(id='doc-002', title='Doc 2', status='published'))
+
+    sec1 = DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='Intro',
+        content_type='text', content='Hello', position=0,
+    )
+    sec2 = DocumentSectionAggregate(
+        id='sec-002', document_id='doc-001', title='Body',
+        content_type='markdown', content='## Content', position=1,
+    )
+    sec3 = DocumentSectionAggregate(
+        id='sec-003', document_id='doc-002', title='Summary',
+        content_type='text', content='World', position=0,
+    )
+    doc_repo.save_section(sec1)
+    doc_repo.save_section(sec2)
+    doc_repo.save_section(sec3)
+
+    result = doc_repo.list(include_sections=True)
+    assert len(result) == 2
+
+    # Find each document and verify sections.
+    docs_by_id = {d.id: d for d in result}
+    assert len(docs_by_id['doc-001'].sections) == 2
+    assert docs_by_id['doc-001'].sections[0].position == 0
+    assert docs_by_id['doc-001'].sections[1].position == 1
+    assert len(docs_by_id['doc-002'].sections) == 1
+    assert docs_by_id['doc-002'].sections[0].title == 'Summary'
+
+
+# ** test_int: list_default_no_sections
+def test_int_list_default_no_sections(doc_repo):
+    '''Test that list() without include_sections returns documents without sections.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc 1', status='draft'))
+    sec1 = DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='Intro',
+        content_type='text', content='Hello', position=0,
+    )
+    doc_repo.save_section(sec1)
+
+    result = doc_repo.list()
+    assert len(result) == 1
+    assert result[0].sections == []
+
+
 # ** test_int: save_upsert
 def test_int_save_upsert(doc_repo, sample_document):
     '''Test that saving an existing document updates it.'''
