@@ -134,7 +134,6 @@ def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo):
     )
     assert full_doc.section_count() == 3
     assert full_doc.sections[0].title == 'What went well'
-    assert full_doc.sections[0].content == '- '
 
     # --- Step 4: Add an extra section ---
     extra_section = DomainEvent.handle(
@@ -142,10 +141,12 @@ def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo):
         dependencies={'document_service': doc_repo},
         document_id=document.id,
         title='Notes',
-        content_type='text',
-        content='Additional notes here.',
+        content='Additional **notes** here.',
     )
     assert extra_section.position == 3
+    # Verify rich-text parsing occurred.
+    assert len(extra_section.paragraphs) == 1
+    assert extra_section.paragraphs[0].segments[1].format_type == 'bold'
 
     # --- Step 5: Reorder sections (move 'Notes' to position 0) ---
     sections = doc_repo.get_sections(document.id)
@@ -252,7 +253,6 @@ def test_int_embedding_workflow(category_repo, doc_repo, template_repo):
         dependencies={'document_service': doc_repo},
         document_id=document.id,
         title='Machine Learning Overview',
-        content_type='markdown',
         content='ML is a subset of AI focused on learning from data.',
     )
 
@@ -261,7 +261,6 @@ def test_int_embedding_workflow(category_repo, doc_repo, template_repo):
         dependencies={'document_service': doc_repo},
         document_id=document.id,
         title='Database Indexing',
-        content_type='markdown',
         content='B-tree indexes speed up read queries.',
     )
 
@@ -270,7 +269,6 @@ def test_int_embedding_workflow(category_repo, doc_repo, template_repo):
         dependencies={'document_service': doc_repo},
         document_id=document.id,
         title='Neural Networks',
-        content_type='markdown',
         content='Neural networks are inspired by biological neurons.',
     )
 
