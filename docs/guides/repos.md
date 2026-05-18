@@ -142,10 +142,115 @@ services:
 
 ---
 
+## DocumentH5Repository
+
+**Module:** `tiferet_kb.repos.document`
+
+Implements `DocumentService` using HDF5 tables for document and section storage, with parallel numpy arrays for embeddings.
+
+### Constructor
+
+```python
+DocumentH5Repository(h5_file: str, mode: str = 'a')
+```
+
+### HDF5 Layout
+
+```
+/kb/documents/
+├── documents              ← DocumentTableObject rows
+├── document_sections      ← DocumentSectionTableObject rows
+├── section_embeddings     ← float32 numpy array
+└── section_embedding_ids   ← S64 string index array
+```
+
+### Key Behaviors
+
+- **`get(id)`** — Joins header and section rows to return a fully-populated aggregate.
+- **`list(include_sections=True)`** — Optionally loads sections for each document (avoids N+1 workaround).
+- **`delete(id)`** — Cascading: removes the document row, all section rows, and all associated embedding entries.
+- **`embed_section()`** — Uses parallel HDF5 arrays for embedding storage.  Replaces existing vectors; validates dimension consistency.
+- **`search_similar()`** — Brute-force cosine similarity over all stored embeddings with optional folder/category filtering.
+
+---
+
+## TemplateH5Repository
+
+**Module:** `tiferet_kb.repos.template`
+
+Implements `TemplateService` using HDF5 tables for template and template section storage.
+
+### Constructor
+
+```python
+TemplateH5Repository(h5_file: str, mode: str = 'a')
+```
+
+### HDF5 Layout
+
+```
+/kb/templates/
+├── templates              ← TemplateTableObject rows
+└── template_sections      ← TemplateSectionTableObject rows
+```
+
+### Key Behaviors
+
+- **`get(id)`** — Joins header and section rows.
+- **`delete(id)`** — Cascading: removes template and all section rows.
+- **`save_section()`** — Upserts a template section.
+
+---
+
+## FolderH5Repository
+
+**Module:** `tiferet_kb.repos.folder`
+
+Implements `FolderService` using HDF5 group node attributes, similar to `CategoryH5Repository`.
+
+### Constructor
+
+```python
+FolderH5Repository(h5_file: str, mode: str = 'a')
+```
+
+### HDF5 Layout
+
+```
+/kb/folders/
+├── <uuid-1>/              ← FolderNodeObject attrs
+├── <uuid-2>/              ← FolderNodeObject attrs
+└── ...
+```
+
+### Key Behaviors
+
+- **`list(parent_id=None)`** — Filters by `parent_id` attribute.  `None` returns root-level folders.
+- **`move(id, new_parent_id)`** — Updates `parent_id` and `path` attributes on the group node.
+- **`delete(id)`** — Removes the group node and all its attributes (idempotent).
+
+---
+
+## Testing
+
+All repository tests are **integration tests** against real temporary HDF5 files:
+
+- `tiferet_kb/repos/tests/test_category.py`
+- `tiferet_kb/repos/tests/test_document.py`
+- `tiferet_kb/repos/tests/test_template.py`
+- `tiferet_kb/repos/tests/test_folder.py`
+
+Cross-domain integration tests live in `tiferet_kb/tests_int/test_workflow.py`.
+
+---
+
 ## Import Reference
 
 Repositories are not exported from `__init__.py`.  For testing or direct use:
 
 ```python
 from tiferet_kb.repos.category import CategoryH5Repository
+from tiferet_kb.repos.document import DocumentH5Repository
+from tiferet_kb.repos.template import TemplateH5Repository
+from tiferet_kb.repos.folder import FolderH5Repository
 ```

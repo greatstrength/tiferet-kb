@@ -48,6 +48,7 @@ class DocumentService(Service):
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
             status: Optional[str] = None,
+            include_sections: bool = False,
         ) -> List:
         '''
         List documents with optional filters.
@@ -58,6 +59,8 @@ class DocumentService(Service):
         :type category_id: str | None
         :param status: Optional status to filter by (draft, published, archived).
         :type status: str | None
+        :param include_sections: If True, populate sections for each document.
+        :type include_sections: bool
         :return: A list of document aggregates.
         :rtype: List
         '''

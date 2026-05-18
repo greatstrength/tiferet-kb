@@ -262,23 +262,200 @@ result = DomainEvent.handle(
 
 ---
 
+## Template Events
+
+**Module:** `tiferet_kb.events.template`
+
+All template events depend on `TemplateService` injected via the constructor.
+
+### AddTemplate
+
+Creates a new knowledge base template.
+
+**Required parameters:** `name`
+**Optional parameters:** `description`, `category_id`
+
+**Behavior:**
+1. Constructs a `TemplateAggregate` from the input parameters.
+2. Verifies no template with the same `id` already exists (`KB_TEMPLATE_ALREADY_EXISTS`).
+3. Persists via `template_service.save()`.
+4. Returns the created `Template`.
+
+### GetTemplate
+
+Retrieves a template by its identifier, including its sections.
+
+**Required parameters:** `id`
+
+**Behavior:**
+1. Retrieves the template from the service.
+2. Verifies the template exists (`KB_TEMPLATE_NOT_FOUND`).
+3. Returns the `Template`.
+
+### ListTemplates
+
+Lists all templates, optionally filtered by category.
+
+**Optional parameters:** `category_id`
+
+### UpdateTemplate
+
+Updates an existing template's metadata.
+
+**Required parameters:** `id`, `attribute`
+**Optional parameters:** `value`
+
+**Supported attributes:** `name`, `description`, `category_id`
+
+### RemoveTemplate
+
+Removes a template by ID.  Idempotent.
+
+**Required parameters:** `id`
+
+### ApplyTemplate
+
+Stamps a template's section blueprints into new document sections, creating a new document with the template's suggested category.
+
+**Required parameters:** `template_id`, `title`
+**Optional parameters:** `folder_id`, `category_id` (overrides template's default)
+
+**Behavior:**
+1. Retrieves the template (`KB_TEMPLATE_NOT_FOUND` if absent).
+2. Creates a new `DocumentAggregate` with the template's category (unless overridden).
+3. Stamps each `TemplateSection` into a new `DocumentSectionAggregate`.
+4. Persists the document and all sections.
+5. Returns the created `Document`.
+
+---
+
+## Template Error Codes
+
+| Constant | When Raised |
+|---|---|
+| `KB_TEMPLATE_NOT_FOUND` | `GetTemplate`, `UpdateTemplate`, `ApplyTemplate` when the template does not exist. |
+| `KB_TEMPLATE_ALREADY_EXISTS` | `AddTemplate` when a template with the same ID already exists. |
+
+---
+
+## Folder Events
+
+**Module:** `tiferet_kb.events.folder`
+
+All folder events depend on `FolderService` injected via the constructor.  Some also depend on `DocumentService`.
+
+### AddFolder
+
+Creates a new folder in the hierarchy.
+
+**Required parameters:** `name`
+**Optional parameters:** `parent_id`
+
+**Behavior:**
+1. Constructs a `FolderAggregate`.
+2. If `parent_id` is provided, verifies the parent folder exists (`KB_FOLDER_NOT_FOUND`).
+3. Persists and returns the created `Folder`.
+
+### GetFolder
+
+Retrieves a folder by its identifier.
+
+**Required parameters:** `id`
+
+### ListFolderContents
+
+Lists folders under a given parent.
+
+**Optional parameters:** `parent_id`
+
+### MoveFolder
+
+Moves a folder to a new parent, updating its materialized path.
+
+**Required parameters:** `id`
+**Optional parameters:** `new_parent_id`
+
+**Behavior:** Verifies the folder and (optionally) the target parent exist.  Checks for circular references (`KB_FOLDER_CIRCULAR_REFERENCE`).
+
+### MoveDocument
+
+Moves a document to a different folder.
+
+**Required parameters:** `document_id`
+**Optional parameters:** `folder_id`
+
+### RemoveFolder
+
+Removes a folder by ID.  Idempotent.
+
+**Required parameters:** `id`
+
+---
+
+## Folder Error Codes
+
+| Constant | When Raised |
+|---|---|
+| `KB_FOLDER_NOT_FOUND` | `GetFolder`, `MoveFolder`, `AddFolder` (parent check). |
+| `KB_FOLDER_ALREADY_EXISTS` | `AddFolder` when duplicate. |
+| `KB_FOLDER_CIRCULAR_REFERENCE` | `MoveFolder` when the target parent creates a cycle. |
+
+---
+
+## Embedding Events
+
+**Module:** `tiferet_kb.events.embedding`
+
+All embedding events depend on `DocumentService` injected via the constructor.
+
+### EmbedDocumentSections
+
+Stores or replaces embedding vectors for one or more document sections.
+
+**Required parameters:** `section_ids`, `embeddings`, `model_name`
+
+**Behavior:** Iterates over the section IDs and corresponding embedding vectors, calling `document_service.embed_section()` for each.  Validates dimension consistency across calls.
+
+### SearchSimilarSections
+
+Performs cosine similarity search over stored embeddings.
+
+**Required parameters:** `query_embedding`
+**Optional parameters:** `limit`, `folder_id`, `category_id`
+
+**Returns:** A list of dicts with `section_id` and `score`, ranked by descending similarity.
+
+### RemoveEmbedding
+
+Removes the embedding for a section without deleting the section itself.
+
+**Required parameters:** `section_id`
+
+---
+
+## Embedding Error Codes
+
+| Constant | When Raised |
+|---|---|
+| `KB_EMBEDDING_DIMENSION_MISMATCH` | `EmbedDocumentSections` when vector dimensions are inconsistent. |
+| `KB_EMBEDDING_NOT_FOUND` | When the embedding does not exist. |
+
+---
+
 ## Import Reference
 
 ```python
 from tiferet_kb.events import (
-    AddCategory,
-    GetCategory,
-    ListCategories,
-    UpdateCategory,
-    RemoveCategory,
-    AddDocument,
-    GetDocument,
-    ListDocuments,
-    UpdateDocument,
-    RemoveDocument,
-    AddDocumentSection,
-    UpdateDocumentSection,
-    RemoveDocumentSection,
-    ReorderDocumentSections,
+    # Category
+    AddCategory, GetCategory, ListCategories, UpdateCategory, RemoveCategory,
+    # Document
+    AddDocument, GetDocument, ListDocuments, UpdateDocument, RemoveDocument,
+    AddDocumentSection, UpdateDocumentSection, RemoveDocumentSection, ReorderDocumentSections,
+    # Template
+    AddTemplate, GetTemplate, ListTemplates, UpdateTemplate, RemoveTemplate, ApplyTemplate,
+    # Embedding
+    EmbedDocumentSections, SearchSimilarSections, RemoveEmbedding,
+    # Folder
+    AddFolder, GetFolder, ListFolderContents, MoveFolder, MoveDocument, RemoveFolder,
 )
 ```

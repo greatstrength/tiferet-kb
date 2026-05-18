@@ -5,9 +5,9 @@
 **tiferet-kb** is a Knowledge Base extension package for the [Tiferet](https://github.com/greatstrength/tiferet) framework.  It provides a full Domain-Driven Design (DDD) layer for managing documents, sections, categories, templates, and folder hierarchies, backed by HDF5 storage via [tiferet-h5](https://github.com/greatstrength/tiferet-h5).
 
 - **Repository:** https://github.com/greatstrength/tiferet-kb
-- **Branch:** `v0.x-proto`
+- **Branch:** `v1.x-proto`
 - **Python:** ≥ 3.10
-- **Version:** `0.1.0a1`
+- **Version:** `1.0.0b1`
 - **Dependencies:** `tiferet >= 2.0.0b3`, `tiferet-h5 >= 0.1.0`
 
 ## Architecture
@@ -122,7 +122,7 @@ All errors are raised as `TiferetError` via `self.verify()` or `self.raise_error
 
 ## Contributing
 
-1. Work from the `v0.x-proto` branch.  Feature branches: `<issue-number>-<lowercase-hyphenated-title>`.
+1. Work from the `v1.x-proto` branch.  Feature branches: `<issue-number>-<lowercase-hyphenated-title>`.
 2. Follow the structured code style documented above.
 3. All errors must use `self.verify()` or `self.raise_error()` with a constant from `assets/constants.py`.
 4. Separate functional changes from documentation in distinct commits.
