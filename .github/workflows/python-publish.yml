@@ -4,8 +4,9 @@ on:
   push:
     tags:
       - 'v*a*'     # alpha pre-releases: v0.1.0a1, v0.1.0a2, etc.
+      - 'v*b*'     # beta pre-releases: v1.0.0b1, v1.0.0b2, etc.
   release:
-    types: [published]  # beta pre-releases and stable releases
+    types: [published]  # stable releases
 
 jobs:
   test:
