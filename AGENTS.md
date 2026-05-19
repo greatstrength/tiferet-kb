@@ -7,7 +7,7 @@
 - **Repository:** https://github.com/greatstrength/tiferet-kb
 - **Branch:** `v1.x-proto`
 - **Python:** ≥ 3.10
-- **Version:** `1.0.0b1`
+- **Version:** `1.0.0b3`
 - **Dependencies:** `tiferet >= 2.0.0b3`, `tiferet-h5 >= 0.1.0`
 
 ## Architecture
@@ -16,13 +16,15 @@
 
 ```
 tiferet_kb/
-├── assets/         Error code string constants
+├── assets/         Error code constants (constants.py) and default error definitions (errors.py)
 ├── domain/         DomainObject subclasses (Category, Document, DocumentSection, Template, TemplateSection, Folder)
 ├── interfaces/     Service ABC contracts (CategoryService, DocumentService, TemplateService, FolderService)
 ├── mappers/        Aggregate + NodeObject + TableObject mappers
-├── events/         DomainEvent subclasses (~26 events across 4 domains)
+├── events/         DomainEvent subclasses (~28 events across 5 groups)
 ├── repos/          H5Repository implementations
-└── tests_int/      Cross-domain integration tests
+├── utils/          Markdown parsing and section-level split/join utilities
+├── tests_int/      Cross-domain integration tests
+└── examples/       Demo scripts (kb_demo.py)
 ```
 
 ### Key Concepts
@@ -57,14 +59,37 @@ All extend `tiferet.domain.DomainObject` (Pydantic v2, read-only).
 
 ### Events
 
-26 domain events across 4 groups:
+28 domain events across 5 groups:
 
 - **Category:** AddCategory, GetCategory, ListCategories, UpdateCategory, RemoveCategory
 - **Document:** AddDocument, GetDocument, ListDocuments, UpdateDocument, RemoveDocument, AddDocumentSection, UpdateDocumentSection, RemoveDocumentSection, ReorderDocumentSections
 - **Template:** AddTemplate, GetTemplate, ListTemplates, UpdateTemplate, RemoveTemplate, ApplyTemplate
 - **Folder:** AddFolder, GetFolder, ListFolderContents, MoveFolder, MoveDocument, RemoveFolder
+- **Markdown:** ImportMarkdownDocument, ExportDocumentMarkdown
 
-Key cross-domain event: **ApplyTemplate** stamps template sections into new document sections, inheriting the template's suggested category.
+Key cross-domain events:
+- **ApplyTemplate** stamps template sections into new document sections, inheriting the template's suggested category.
+- **ImportMarkdownDocument** parses H1-delimited markdown into a document with sections.
+- **ExportDocumentMarkdown** reconstructs a document and its sections as a markdown string.
+
+### Markdown Convention
+
+Markdown import/export uses a simple, agent-friendly convention:
+- Every document **must start with an `# H1` heading**.
+- Each `# H1` heading begins a new document section.
+- Sub-headings (`##`, `###`, etc.) and all other content belong to the current section.
+- The first H1's text becomes the document title.
+
+This convention is intentionally simple — it is trivial to teach to AI agents generating KB content.
+
+### Utilities
+
+`tiferet_kb/utils/markdown.py` provides:
+- `split_markdown_sections(content)` — Split markdown on H1 headings into `[{title, content}, ...]`.
+- `join_markdown_sections(sections)` — Reconstruct markdown from ordered sections.
+- `parse_paragraph_to_segments(text)` — Tokenize inline markdown into TextSegment objects.
+- `reassemble_paragraph(segments)` — Reassemble TextSegments back to markdown.
+- `parse_content_to_paragraphs(content, section_id)` — Split content into Paragraph objects.
 
 ## Structured Code Style
 
@@ -98,7 +123,18 @@ RST format with `:param`, `:type`, `:return:`, `:rtype:` for all public methods.
 
 ## Error Handling
 
-All errors are raised as `TiferetError` via `self.verify()` or `self.raise_error()` in domain events.  Error code constants are defined in `tiferet_kb/assets/constants.py`.  Error definitions with multilingual messages are in `app/configs/error.yml`.
+All errors are raised as `TiferetError` via `self.verify()` or `self.raise_error()` in domain events.  Error code constants are defined in `tiferet_kb/assets/constants.py`.  Default error definitions (name + message templates) are in `tiferet_kb/assets/errors.py` as a `DEFAULT_ERRORS` dict, following the same pattern as `tiferet.assets.constants.DEFAULT_ERRORS`.
+
+**Configuring KB errors at app level:** tiferet's `GetError` event and `ErrorContext` only search tiferet's own `DEFAULT_ERRORS` dict.  To make KB error definitions available as built-in defaults (without requiring `error.yml`), the consuming app must merge them at initialization:
+
+```python
+from tiferet.assets.constants import DEFAULT_ERRORS as TIFERET_DEFAULTS
+from tiferet_kb.assets import DEFAULT_ERRORS as KB_DEFAULTS
+
+TIFERET_DEFAULTS.update({k: v for k, v in KB_DEFAULTS.items() if k not in TIFERET_DEFAULTS})
+```
+
+Alternatively, include all KB error definitions in `app/configs/error.yml` so the error repository returns them directly.
 
 ## Package Exports
 
@@ -107,18 +143,23 @@ All errors are raised as `TiferetError` via `self.verify()` or `self.raise_error
 - **Domain:** Category, Document, DocumentSection, Template, TemplateSection, Folder
 - **Interfaces:** CategoryService, DocumentService, TemplateService, FolderService
 - **Mappers:** All Aggregate, NodeObject, and TableObject classes
+- **Events:** EmbedDocumentSections, SearchSimilarSections, RemoveEmbedding, ImportMarkdownDocument, ExportDocumentMarkdown
+- **Assets:** DEFAULT_ERRORS (from `tiferet_kb.assets`)
 
 ## Key Files for Orientation
 
 - `tiferet_kb/__init__.py` — Version and public exports
-- `tiferet_kb/assets/constants.py` — KB error code constants
+- `tiferet_kb/assets/constants.py` — KB error code string constants
+- `tiferet_kb/assets/errors.py` — KB default error definitions (`DEFAULT_ERRORS` dict)
 - `tiferet_kb/domain/` — All domain objects
 - `tiferet_kb/interfaces/` — All service contracts
 - `tiferet_kb/mappers/` — All mapper classes
 - `tiferet_kb/events/` — All domain events
 - `tiferet_kb/repos/` — All H5 repository implementations
+- `tiferet_kb/utils/markdown.py` — Markdown parsing and section-level split/join
 - `tiferet_kb/tests_int/test_workflow.py` — End-to-end integration test
 - `app/configs/` — YAML configuration files (app, container, feature, error)
+- `examples/kb_demo.py` — Full workflow demo (category → markdown import → list → export)
 
 ## Contributing
 
