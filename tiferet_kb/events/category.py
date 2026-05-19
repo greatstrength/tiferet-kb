@@ -10,7 +10,7 @@ from tiferet.events import DomainEvent
 
 from ..assets import constants as const
 from ..domain import Category
-from ..interfaces import CategoryService
+from ..interfaces import CategoryService, DocumentService
 from ..mappers import CategoryAggregate
 
 # *** events
@@ -268,8 +268,9 @@ class UpdateCategory(DomainEvent):
 # ** event: remove_category
 class RemoveCategory(DomainEvent):
     '''
-    Event to remove a category by ID (idempotent).
+    Event to remove a category by ID.
 
+    Verifies that no documents reference the category before deletion.
     Delegates deletion semantics to the underlying ``CategoryService.delete``
     implementation, which is expected to behave idempotently when the
     category does not exist.
@@ -278,17 +279,25 @@ class RemoveCategory(DomainEvent):
     # * attribute: category_service
     category_service: CategoryService
 
+    # * attribute: document_service
+    document_service: DocumentService
+
     # * init
-    def __init__(self, category_service: CategoryService):
+    def __init__(self, category_service: CategoryService, document_service: DocumentService):
         '''
         Initialize the RemoveCategory event.
 
         :param category_service: The category service for deletion.
         :type category_service: CategoryService
+        :param document_service: The document service for reference checking.
+        :type document_service: DocumentService
         '''
 
         # Set the category service dependency.
         self.category_service = category_service
+
+        # Set the document service dependency.
+        self.document_service = document_service
 
     # * method: execute
     @DomainEvent.parameters_required(['id'])
@@ -303,6 +312,15 @@ class RemoveCategory(DomainEvent):
         :return: The removed category ID.
         :rtype: str
         '''
+
+        # Verify no documents reference this category.
+        referencing_docs = self.document_service.list(category_id=id)
+        self.verify(
+            expression=len(referencing_docs) == 0,
+            error_code=const.KB_CATEGORY_IN_USE_ID,
+            message=f'Category {id} is referenced by existing documents.',
+            id=id,
+        )
 
         # Delete the category (idempotent).
         self.category_service.delete(id)

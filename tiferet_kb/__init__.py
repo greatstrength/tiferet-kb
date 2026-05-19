@@ -28,6 +28,8 @@ try:
         EmbedDocumentSections,
         SearchSimilarSections,
         RemoveEmbedding,
+        ImportMarkdownDocument,
+        ExportDocumentMarkdown,
     )
 except Exception as e:
     import os, sys
@@ -36,4 +38,4 @@ except Exception as e:
 
 # *** version
 
-__version__ = '1.0.0b2'
+__version__ = '1.0.0b3'

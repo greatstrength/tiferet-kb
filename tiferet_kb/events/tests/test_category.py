@@ -10,7 +10,7 @@ from unittest import mock
 from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
-from ...interfaces import CategoryService
+from ...interfaces import CategoryService, DocumentService
 from ...mappers import CategoryAggregate
 from ..category import (
     AddCategory,
@@ -29,6 +29,15 @@ def mock_category_service() -> CategoryService:
     Mock CategoryService for testing.
     '''
     return mock.Mock(spec=CategoryService)
+
+
+# ** fixture: mock_document_service
+@pytest.fixture
+def mock_document_service() -> DocumentService:
+    '''
+    Mock DocumentService for testing.
+    '''
+    return mock.Mock(spec=DocumentService)
 
 
 # ** fixture: sample_category
@@ -209,20 +218,53 @@ def test_update_category_invalid_attribute(mock_category_service: CategoryServic
 
 
 # ** test: remove_category_success
-def test_remove_category_success(mock_category_service: CategoryService):
+def test_remove_category_success(mock_category_service: CategoryService, mock_document_service: DocumentService):
     '''
-    Test successful removal of a category.
+    Test successful removal of a category with no referencing documents.
     '''
+
+    # Arrange the document service to return no referencing documents.
+    mock_document_service.list.return_value = []
 
     # Execute via DomainEvent.handle.
     result = DomainEvent.handle(
         RemoveCategory,
-        dependencies={'category_service': mock_category_service},
+        dependencies={
+            'category_service': mock_category_service,
+            'document_service': mock_document_service,
+        },
         id='meeting-notes',
     )
 
     # Assert the returned ID matches.
     assert result == 'meeting-notes'
 
+    # Assert the document service was queried for references.
+    mock_document_service.list.assert_called_once_with(category_id='meeting-notes')
+
     # Assert the service delete was called.
     mock_category_service.delete.assert_called_once_with('meeting-notes')
+
+
+# ** test: remove_category_in_use
+def test_remove_category_in_use(mock_category_service: CategoryService, mock_document_service: DocumentService):
+    '''
+    Test that removing a category referenced by documents raises an error.
+    '''
+
+    # Arrange the document service to return referencing documents.
+    mock_document_service.list.return_value = [mock.Mock()]
+
+    # Execute and expect a TiferetError.
+    with pytest.raises(TiferetError):
+        DomainEvent.handle(
+            RemoveCategory,
+            dependencies={
+                'category_service': mock_category_service,
+                'document_service': mock_document_service,
+            },
+            id='meeting-notes',
+        )
+
+    # Assert the category was NOT deleted.
+    mock_category_service.delete.assert_not_called()

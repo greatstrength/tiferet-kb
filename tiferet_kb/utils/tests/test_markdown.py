@@ -6,6 +6,8 @@
 from ..markdown import (
     parse_paragraph_to_segments,
     reassemble_paragraph,
+    split_markdown_sections,
+    join_markdown_sections,
     parse_content_to_paragraphs,
 )
 
@@ -69,6 +71,97 @@ def test_round_trip_parse_reassemble():
     segments = parse_paragraph_to_segments(original)
     reassembled = reassemble_paragraph(segments)
     assert reassembled == original
+
+
+# *** tests: split_markdown_sections
+
+# ** test: split_basic_sections
+def test_split_basic_sections():
+    '''Split a markdown document with multiple H1 sections.'''
+
+    content = '# Introduction\n\nSome intro text.\n\n# Details\n\nDetail content here.\n\n## Subsection\n\nSub content.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 2
+    assert sections[0]['title'] == 'Introduction'
+    assert sections[0]['content'] == 'Some intro text.'
+    assert sections[1]['title'] == 'Details'
+    assert '## Subsection' in sections[1]['content']
+
+
+# ** test: split_single_section
+def test_split_single_section():
+    '''A document with one H1 produces one section.'''
+
+    content = '# Only Section\n\nContent here.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 1
+    assert sections[0]['title'] == 'Only Section'
+    assert sections[0]['content'] == 'Content here.'
+
+
+# ** test: split_empty_content
+def test_split_empty_content():
+    '''Empty content produces no sections.'''
+
+    assert split_markdown_sections('') == []
+    assert split_markdown_sections('   ') == []
+
+
+# ** test: split_no_h1_raises
+def test_split_no_h1_raises():
+    '''Content not starting with H1 raises ValueError.'''
+
+    import pytest
+    with pytest.raises(ValueError):
+        split_markdown_sections('No heading here.\n\nJust paragraphs.')
+
+
+# ** test: split_section_no_content
+def test_split_section_no_content():
+    '''An H1 with no body produces a section with empty content.'''
+
+    content = '# Empty Section\n# Next Section\n\nHas content.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 2
+    assert sections[0]['title'] == 'Empty Section'
+    assert sections[0]['content'] == ''
+    assert sections[1]['title'] == 'Next Section'
+    assert sections[1]['content'] == 'Has content.'
+
+
+# *** tests: join_markdown_sections
+
+# ** test: join_dict_sections
+def test_join_dict_sections():
+    '''Join sections from dicts back into markdown.'''
+
+    sections = [
+        {'title': 'Introduction', 'content': 'Some intro.'},
+        {'title': 'Details', 'content': 'Detail content.'},
+    ]
+    result = join_markdown_sections(sections)
+
+    assert result == '# Introduction\n\nSome intro.\n\n# Details\n\nDetail content.\n'
+
+
+# ** test: join_empty_list
+def test_join_empty_list():
+    '''Joining an empty list produces an empty string.'''
+
+    assert join_markdown_sections([]) == ''
+
+
+# ** test: round_trip_split_join
+def test_round_trip_split_join():
+    '''Splitting then joining should produce equivalent markdown.'''
+
+    original = '# First\n\nContent one.\n\n# Second\n\nContent two.\n'
+    sections = split_markdown_sections(original)
+    result = join_markdown_sections(sections)
+    assert result == original
 
 
 # *** tests: parse_content_to_paragraphs
