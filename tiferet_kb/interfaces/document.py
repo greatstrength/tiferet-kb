@@ -325,3 +325,59 @@ class DocumentService(Service):
         :rtype: bool | None
         '''
         raise NotImplementedError('delete_comment method is required for DocumentService.')
+
+    # * method: add_link
+    @abstractmethod
+    def add_link(self, link):
+        '''
+        Store one directional document link.
+
+        Refuses the write when the id is already a link id, or when the
+        source, target, and type are already stored. Does not insert and
+        then roll back. Does not write the reverse row.
+
+        :param link: The document link aggregate to store.
+        :return: The stored link.
+        '''
+        raise NotImplementedError('add_link method is required for DocumentService.')
+
+    # * method: list_links
+    @abstractmethod
+    def list_links(self,
+            document_id: str,
+            direction: str = 'both',
+            link_type: Optional[str] = None,
+        ) -> List:
+        '''
+        List links for one document.
+
+        A missing link table is an empty list and is not created. ``outgoing``
+        keeps rows whose source is the document. ``incoming`` keeps rows whose
+        target is the document. ``both`` returns outgoing rows, then incoming rows.
+
+        :param document_id: The document whose links are listed.
+        :type document_id: str
+        :param direction: ``outgoing``, ``incoming``, or ``both``.
+        :type direction: str
+        :param link_type: Optional exact type filter. Omitted means every type.
+        :type link_type: str | None
+        :return: The matching links.
+        :rtype: List
+        '''
+        raise NotImplementedError('list_links method is required for DocumentService.')
+
+    # * method: remove_link
+    @abstractmethod
+    def remove_link(self, id: str) -> None:
+        '''
+        Remove one link row by id. This operation is idempotent.
+
+        Deleting the last row does not delete the link table. A missing
+        table is not an error.
+
+        :param id: The link identifier.
+        :type id: str
+        :return: None
+        :rtype: None
+        '''
+        raise NotImplementedError('remove_link method is required for DocumentService.')

@@ -6,6 +6,7 @@
 from .category import Category
 from .comment import SectionComment
 from .document import Document, DocumentProperty, DocumentSection
+from .document_link import DocumentLink
 from .tag import Tag
 from .embedding import EmbeddingRecord
 from .segment import TextSegment, Paragraph

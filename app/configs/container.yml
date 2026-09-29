@@ -124,6 +124,7 @@ attrs:
   list_document_tags_event:
     module_path: tiferet_kb.events.tag
     class_name: ListDocumentTags
+
   # Comment events
   add_section_comment_event:
     module_path: tiferet_kb.events.comment
@@ -134,3 +135,14 @@ attrs:
   remove_section_comment_event:
     module_path: tiferet_kb.events.comment
     class_name: RemoveSectionComment
+
+  # Document link events
+  add_document_link_event:
+    module_path: tiferet_kb.events.document_link
+    class_name: AddDocumentLink
+  remove_document_link_event:
+    module_path: tiferet_kb.events.document_link
+    class_name: RemoveDocumentLink
+  list_document_links_event:
+    module_path: tiferet_kb.events.document_link
+    class_name: ListDocumentLinks

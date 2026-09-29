@@ -9,6 +9,16 @@ errors:
     message:
       - lang: en_US
         text: 'Document with ID {id} already exists'
+  kb_document_link_already_exists:
+    name: Document Link Already Exists
+    message:
+      - lang: en_US
+        text: 'Document link already exists: {id}'
+  kb_invalid_document_link:
+    name: Invalid Document Link
+    message:
+      - lang: en_US
+        text: 'Invalid document link: {message}'
   kb_document_section_not_found:
     name: Document Section Not Found
     message:

@@ -29,6 +29,11 @@ from .document import (
     SetDocumentProperty,
     RemoveDocumentProperty,
 )
+from .document_link import (
+    AddDocumentLink,
+    RemoveDocumentLink,
+    ListDocumentLinks,
+)
 from .template import (
     AddTemplate,
     GetTemplate,

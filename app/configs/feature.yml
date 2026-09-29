@@ -244,6 +244,7 @@ features:
       commands:
         - attribute_id: list_document_tags_event
           name: List document tags
+
   # Comment features
   comment:
     add:
@@ -264,3 +265,24 @@ features:
       commands:
         - attribute_id: remove_section_comment_event
           name: Remove section comment
+
+  # Document link features
+  document_link:
+    add:
+      name: Add Document Link
+      description: Link one document to another in this file
+      commands:
+        - attribute_id: add_document_link_event
+          name: Add document link
+    remove:
+      name: Remove Document Link
+      description: Remove a document link by id
+      commands:
+        - attribute_id: remove_document_link_event
+          name: Remove document link
+    list:
+      name: List Document Links
+      description: List links for one document
+      commands:
+        - attribute_id: list_document_links_event
+          name: List document links

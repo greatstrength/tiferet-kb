@@ -26,6 +26,10 @@ from ..mappers.document import (
     DocumentPropertyTableObject,
     DocumentSectionNodeObject,
 )
+from ..mappers.document_link import (
+    DocumentLinkAggregate,
+    DocumentLinkTableObject,
+)
 from ..mappers.segment import HybridSegmentTableObject
 from .core import KBNodeRepository, KBTableRepository
 
@@ -48,6 +52,9 @@ EMBEDDINGS_ARRAY = '/kb/documents/section_embeddings'
 
 # ** constant: embedding_ids_array
 EMBEDDING_IDS_ARRAY = '/kb/documents/section_embedding_ids'
+
+# ** constant: document_links_table
+DOCUMENT_LINKS_TABLE = f'{DOCUMENTS_GROUP}/document_links'
 
 # ** constant: h5_embedding_dimension_mismatch_id
 H5_EMBEDDING_DIMENSION_MISMATCH_ID = 'H5_EMBEDDING_DIMENSION_MISMATCH'
@@ -86,8 +93,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
     Group and array removal goes through ``KBNodeRepository.remove_node``,
     and stamped table creation through ``KBTableRepository.ensure_table``;
     each is held as a collaborator.
-    The header and each ``segments`` table are stamped with
-    ``schema_version`` on first create; ``verify`` is the opt-in check.
+    The header, each ``segments`` table, and the ``document_links`` table
+    are stamped with ``schema_version`` on first create; ``verify`` is the
+    opt-in check. Link rows are removed through the client, not
+    ``remove_node``. Deleting the last link leaves the table node.
     '''
 
     # * attribute: node_repo
@@ -399,6 +408,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
                 h5.assert_schema(DOCUMENT_PROPERTIES_TABLE, DocumentPropertyTableObject)
 
+            # Verify the link table when it exists. A missing table is not a mismatch.
+            if h5.node_exists(DOCUMENT_LINKS_TABLE):
+                h5.assert_schema(DOCUMENT_LINKS_TABLE, DocumentLinkTableObject)
+
             # Verify the section's segments table when a path was given and it exists.
             if section_path:
                 segments_path = f'{section_path}/segments'
@@ -427,8 +440,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
     def delete(self, id: str) -> None:
         '''
         Delete a document and all its sections by ID (idempotent, cascading).
-        Also removes embeddings for the document's sections and every comment
-        row with that document id. Comment rows are not under the document group.
+        Also removes embeddings for the document's sections, every comment
+        row with that document id, and link rows where the document is the
+        source or the target. Comment rows are not under the document group.
+        A missing link table is not an error, and the table node is not removed.
 
         :param id: The document identifier.
         :type id: str
@@ -437,6 +452,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         '''
 
         with self.client() as h5:
+
+            # Drop link rows even when the header is already gone.
+            # Removal goes through the client. The table node stays.
+            self._remove_links_for_document(h5, id)
 
             # Collect section IDs before deleting, for embedding cleanup.
             sections_group = f'{DOCUMENTS_GROUP}/{id}/sections'
@@ -465,6 +484,150 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
             # Cascade comments by document id. Recursive group removal does not reach this table.
             self._remove_comment_rows(h5, document_id=id)
+
+    # * method: add_link
+    def add_link(self, link: DocumentLinkAggregate) -> DocumentLinkAggregate:
+        '''
+        Store one directional document link.
+
+        A duplicate id, or a duplicate source, target, and type, is refused
+        before any row is appended. The first successful add creates the
+        table. Add does not write the reverse row and does not create a
+        document.
+
+        :param link: The document link aggregate to store.
+        :type link: DocumentLinkAggregate
+        :return: The stored link.
+        :rtype: DocumentLinkAggregate
+        '''
+
+        # Reject a value that the column would clip, before the file is opened.
+        self._reject_unfit_link(link)
+
+        with self.client() as h5:
+
+            # Refuse a duplicate before creating the table or appending a row.
+            if self._link_conflicts(h5, link):
+                TiferetError.raise_error(
+                    a.errors.KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
+                    message=f'Document link already exists: {link.id}',
+                    id=link.id,
+                    source_id=link.source_id,
+                    target_id=link.target_id,
+                    link_type=link.link_type,
+                )
+
+            # Create the sibling table on the first successful add and stamp it.
+            self._ensure_group(h5)
+            table = self.table_repo.ensure_table(
+                h5,
+                DOCUMENT_LINKS_TABLE,
+                DocumentLinkTableObject,
+                title='Document Links',
+            )
+            DocumentLinkTableObject.from_model(link).to_row(table)
+            table.flush()
+
+        # Return the link that was stored. No reverse row was written.
+        return link
+
+    # * method: list_links
+    def list_links(self,
+            document_id: str,
+            direction: str = a.core.DOCUMENT_LINK_BOTH,
+            link_type: Optional[str] = None,
+        ) -> List[DocumentLinkAggregate]:
+        '''
+        List links for one document.
+
+        A missing file or a missing link table is an empty list and does not
+        create the table. Within one direction, rows are ordered by
+        ``created_at`` ascending, then ``id`` ascending. ``both`` returns the
+        outgoing rows, then the incoming rows.
+
+        :param document_id: The document whose links are listed.
+        :type document_id: str
+        :param direction: ``outgoing``, ``incoming``, or ``both``.
+        :type direction: str
+        :param link_type: Optional exact type filter. Omitted means every type.
+        :type link_type: str | None
+        :return: The matching links.
+        :rtype: List[DocumentLinkAggregate]
+        '''
+
+        # Reject a direction this command does not understand.
+        allowed = {
+            a.core.DOCUMENT_LINK_OUTGOING,
+            a.core.DOCUMENT_LINK_INCOMING,
+            a.core.DOCUMENT_LINK_BOTH,
+        }
+        if direction not in allowed:
+            TiferetError.raise_error(
+                a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                message=f'Invalid document link direction: {direction}',
+                direction=direction,
+            )
+
+        # An empty type is not "every type".
+        if link_type is not None:
+            link_type = link_type.strip() if isinstance(link_type, str) else ''
+            if not link_type:
+                TiferetError.raise_error(
+                    a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                    message='Invalid document link type.',
+                    link_type=link_type,
+                )
+
+        # A missing file is an empty list and must not be created.
+        if not self.file_exists():
+            return []
+
+        with self.client() as h5:
+
+            # A missing table is an empty list and must not be created.
+            stored = self._read_links(h5)
+
+        # Keep an exact type match when the caller named one.
+        if link_type is not None:
+            stored = [item for item in stored if item.link_type == link_type]
+
+        # Outgoing and incoming are disjoint: a self-link cannot be stored.
+        outgoing = self._sort_links(
+            item for item in stored if item.source_id == document_id
+        )
+        incoming = self._sort_links(
+            item for item in stored if item.target_id == document_id
+        )
+        if direction == a.core.DOCUMENT_LINK_OUTGOING:
+            return outgoing
+        if direction == a.core.DOCUMENT_LINK_INCOMING:
+            return incoming
+        return outgoing + incoming
+
+    # * method: remove_link
+    def remove_link(self, id: str) -> None:
+        '''
+        Remove one link row by id (idempotent).
+
+        A missing file or table is not an error. The table node stays when
+        the last row is removed. This does not call ``remove_node``.
+
+        :param id: The link identifier.
+        :type id: str
+        :return: None
+        :rtype: None
+        '''
+
+        # A missing file has nothing to remove and must not be created.
+        if not self.file_exists():
+            return
+
+        with self.client() as h5:
+
+            # A missing table is a no-op. Do not create it, and do not remove it.
+            if not h5.node_exists(DOCUMENT_LINKS_TABLE):
+                return
+            h5.remove_rows(DOCUMENT_LINKS_TABLE, f'(id == b"{id}")')
 
     # * method: get_sections
     def get_sections(self, document_id: str) -> List[DocumentSectionAggregate]:
@@ -1581,3 +1744,122 @@ class DocumentH5Repository(H5Repository, DocumentService):
         table = h5.get_table(DOCUMENTS_TABLE)
         DocumentTableObject.from_row(data).to_row(table)
         table.flush()
+
+    # * method: _reject_unfit_link
+    def _reject_unfit_link(self, link: DocumentLinkAggregate) -> None:
+        '''
+        Reject a link whose stored strings would be clipped.
+
+        :param link: The link about to be stored.
+        :type link: DocumentLinkAggregate
+        :return: None
+        :rtype: None
+        '''
+
+        # The type uses the header title width. Identifiers use the id width.
+        type_fits = DocumentLinkTableObject.value_fits(
+            link.link_type,
+            DocumentLinkTableObject.type_width(),
+        )
+        ids_fit = all(
+            DocumentLinkTableObject.value_fits(value, DocumentLinkTableObject.identifier_width())
+            for value in (link.id, link.source_id, link.target_id)
+        )
+        timestamp_fits = DocumentLinkTableObject.value_fits(
+            link.created_at,
+            DocumentLinkTableObject._H5_TYPES['created_at'].itemsize,
+        )
+        if type_fits and ids_fit and timestamp_fits and link.source_id != link.target_id and link.link_type:
+            return
+
+        # Refuse before any table is created.
+        TiferetError.raise_error(
+            a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+            message='Invalid document link.',
+            id=link.id,
+            link_type=link.link_type,
+        )
+
+    # * method: _link_conflicts
+    def _link_conflicts(self, h5, link: DocumentLinkAggregate) -> bool:
+        '''
+        Return whether this id or this source, target, and type is already stored.
+
+        :param h5: The open H5Client instance.
+        :param link: The link about to be stored.
+        :type link: DocumentLinkAggregate
+        :return: True when the write must be refused.
+        :rtype: bool
+        '''
+
+        # A missing table cannot hold a duplicate.
+        for stored in self._read_links(h5):
+            if stored.id == link.id:
+                return True
+            if (
+                stored.source_id == link.source_id
+                and stored.target_id == link.target_id
+                and stored.link_type == link.link_type
+            ):
+                return True
+        return False
+
+    # * method: _read_links
+    def _read_links(self, h5) -> List[DocumentLinkAggregate]:
+        '''
+        Read every link row. A missing table is an empty list and is not created.
+
+        :param h5: The open H5Client instance.
+        :return: The stored links.
+        :rtype: List[DocumentLinkAggregate]
+        '''
+
+        # Do not create the table on a read.
+        if not h5.node_exists(DOCUMENT_LINKS_TABLE):
+            return []
+        return [
+            DocumentLinkTableObject.from_row(row).map()
+            for row in h5.read_rows(DOCUMENT_LINKS_TABLE)
+        ]
+
+    # * method: _sort_links
+    def _sort_links(self, links) -> List[DocumentLinkAggregate]:
+        '''
+        Order links by created_at ascending, then id ascending.
+
+        :param links: The links to order.
+        :return: The ordered links.
+        :rtype: List[DocumentLinkAggregate]
+        '''
+
+        # Both keys are strings. ISO timestamps sort lexicographically.
+        return sorted(links, key=lambda link: (link.created_at, link.id))
+
+    # * method: _remove_links_for_document
+    def _remove_links_for_document(self, h5, document_id: str) -> None:
+        '''
+        Remove link rows whose source or target is the document.
+
+        Uses ``remove_rows`` only. A missing table is not an error, and the
+        table node is not removed.
+
+        :param h5: The open H5Client instance.
+        :param document_id: The document identifier.
+        :type document_id: str
+        :return: None
+        :rtype: None
+        '''
+
+        # A missing table has no endpoint to clear.
+        if not h5.node_exists(DOCUMENT_LINKS_TABLE):
+            return
+
+        # Two column removals. A self-link cannot be stored, so the sets are disjoint.
+        h5.remove_rows(
+            DOCUMENT_LINKS_TABLE,
+            f'(source_id == b"{document_id}")',
+        )
+        h5.remove_rows(
+            DOCUMENT_LINKS_TABLE,
+            f'(target_id == b"{document_id}")',
+        )
