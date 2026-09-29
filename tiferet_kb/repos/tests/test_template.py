@@ -19,7 +19,6 @@ from ...mappers.template import (
     TemplateSectionTableObject,
     TemplateTableObject,
 )
-from ...utils.h5 import remove_node
 from ..template import (
     TEMPLATE_SECTIONS_TABLE,
     TEMPLATES_TABLE,
@@ -259,7 +258,7 @@ def test_int_verify_passes_and_detects_drift(tmpl_repo, h5_file, sample_template
         {**TemplateTableObject._H5_TYPES, 'name': tables.StringCol(8)},
     )
     with H5Client(path=h5_file, mode='a') as h5:
-        remove_node(h5, TEMPLATES_TABLE)
+        tmpl_repo.remove_node(h5, TEMPLATES_TABLE)
         h5.create_table(TEMPLATES_TABLE, narrow)
 
     with pytest.raises(ServiceError) as exc_info:

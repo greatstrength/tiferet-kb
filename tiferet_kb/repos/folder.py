@@ -6,14 +6,14 @@
 from typing import List, Optional
 
 # ** app
-from tiferet_h5.repos import H5Repository, NodeRepository
+from tiferet_h5.repos import NodeRepository
 
 from ..interfaces.folder import FolderService
 from ..mappers.folder import (
     FolderAggregate,
     FolderNodeObject,
 )
-from ..utils.h5 import remove_node
+from .core import KBH5Repository
 
 # *** constants
 
@@ -23,7 +23,7 @@ FOLDERS_ROOT = '/kb/folders'
 # *** repos
 
 # ** repo: folder_h5_repository
-class FolderH5Repository(NodeRepository, H5Repository, FolderService):
+class FolderH5Repository(NodeRepository, KBH5Repository, FolderService):
     '''
     HDF5-backed repository for knowledge base folders.
 
@@ -36,7 +36,7 @@ class FolderH5Repository(NodeRepository, H5Repository, FolderService):
     ``get`` stays overridden because the identifier is the group name and
     is not an attribute.  ``list`` walks the child groups and filters by
     ``parent_id`` in Python.  ``delete`` removes the group through
-    ``tiferet_kb.utils.h5.remove_node``.
+    ``KBH5Repository.remove_node``.
     '''
 
     # * attribute: node_cls
@@ -177,7 +177,7 @@ class FolderH5Repository(NodeRepository, H5Repository, FolderService):
         with self.client() as h5:
 
             # Remove the group and its contents; a missing node is a no-op.
-            remove_node(h5, group_path, recursive=True)
+            self.remove_node(h5, group_path, recursive=True)
 
     # * method: move
     def move(self, id: str, new_parent_id: Optional[str] = None) -> None:

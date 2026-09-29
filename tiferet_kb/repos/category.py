@@ -6,14 +6,14 @@
 from typing import List, Optional
 
 # ** app
-from tiferet_h5.repos import H5Repository, NodeRepository
+from tiferet_h5.repos import NodeRepository
 
 from ..interfaces import CategoryService
 from ..mappers import (
     CategoryAggregate,
     CategoryNodeObject,
 )
-from ..utils.h5 import remove_node
+from .core import KBH5Repository
 
 # *** constants
 
@@ -23,7 +23,7 @@ CATEGORIES_ROOT = '/kb/categories'
 # *** repos
 
 # ** repo: category_h5_repository
-class CategoryH5Repository(NodeRepository, H5Repository, CategoryService):
+class CategoryH5Repository(NodeRepository, KBH5Repository, CategoryService):
     '''
     HDF5-backed repository for knowledge base categories.
 
@@ -35,7 +35,7 @@ class CategoryH5Repository(NodeRepository, H5Repository, CategoryService):
     ``NodeRepository`` owns path resolution, ``save``, and ``exists``.
     ``get`` stays overridden because the identifier is the group name and
     is not an attribute.  ``list`` walks the child groups.  ``delete``
-    removes the group through ``tiferet_kb.utils.h5.remove_node``.
+    removes the group through ``KBH5Repository.remove_node``.
     '''
 
     # * attribute: node_cls
@@ -178,4 +178,4 @@ class CategoryH5Repository(NodeRepository, H5Repository, CategoryService):
         with self.client() as h5:
 
             # Remove the group and its contents; a missing node is a no-op.
-            remove_node(h5, group_path, recursive=True)
+            self.remove_node(h5, group_path, recursive=True)
