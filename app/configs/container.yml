@@ -49,6 +49,12 @@ attrs:
   update_document_section_event:
     module_path: tiferet_kb.events.document
     class_name: UpdateDocumentSection
+  list_document_section_revisions_event:
+    module_path: tiferet_kb.events.document
+    class_name: ListDocumentSectionRevisions
+  restore_document_section_revision_event:
+    module_path: tiferet_kb.events.document
+    class_name: RestoreDocumentSectionRevision
   remove_document_section_event:
     module_path: tiferet_kb.events.document
     class_name: RemoveDocumentSection
