@@ -5,11 +5,13 @@
 # ** core
 import inspect
 import os
+from datetime import datetime
 
 # ** infra
 import pytest
 import tables
 from tiferet.assets import TiferetError
+from tiferet.events import DomainEvent
 from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import NodeRepository, TableRepository
 from tiferet_h5.utils import H5Client
@@ -22,12 +24,20 @@ from ...mappers.document import (
     DocumentTableObject,
 )
 from ...mappers.segment import HybridSegmentTableObject
+from ...events.document import (
+    AddDocumentSection,
+    ListDocumentSectionRevisions,
+    RestoreDocumentSectionRevision,
+    UpdateDocumentSection,
+)
 from ...utils.markdown import parse_content_to_paragraphs
 from ..document import (
     DOCUMENTS_TABLE,
     EMBEDDINGS_ARRAY,
     EMBEDDING_IDS_ARRAY,
     SECTION_COMMENTS_TABLE,
+
+    REVISIONS_GROUP_NAME,
     DocumentH5Repository,
 )
 
@@ -1022,3 +1032,227 @@ def test_int_comment_row_removal_does_not_call_remove_node(doc_repo, h5_file):
     with H5Client(path=h5_file, mode='r') as h5:
         assert h5.node_exists(SECTION_COMMENTS_TABLE)
         assert not any(row['id'] == 'cmt-001' for row in h5.read_rows(SECTION_COMMENTS_TABLE))
+
+# *** tests: RFP-006 section history
+
+# ** test_int: list_revisions_missing_file
+def test_int_list_revisions_missing_file(doc_repo, h5_file):
+    '''A missing file lists as empty and is not created.'''
+
+    assert doc_repo.list_section_revisions('doc-001', 'sec-001') == []
+    assert doc_repo.get_section_revision('doc-001', 'sec-001', 1) is None
+    assert not os.path.exists(h5_file)
+
+# ** test_int: missing_collection_lists_empty
+def test_int_missing_collection_lists_empty(doc_repo, h5_file, sample_document, sample_section):
+    '''A section written before history lists as empty and is not rewritten.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    assert doc_repo.list_section_revisions('doc-001', 'sec-001') == []
+    assert len(doc_repo.get_sections('doc-001')) == 1
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert not h5.node_exists(
+            f'/kb/documents/doc-001/sections/sec-001/{REVISIONS_GROUP_NAME}'
+        )
+
+# ** test_int: empty_paragraph_snapshot_survives_save
+def test_int_empty_paragraph_snapshot_survives_save(doc_repo, h5_file, sample_document, sample_section):
+    '''An empty snapshot is a real group, and save_section leaves that group in place.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    section_path = '/kb/documents/doc-001/sections/sec-001'
+
+    revision = doc_repo.append_section_revision(
+        document_id='doc-001',
+        section_id='sec-001',
+        title='Introduction',
+        content_type='markdown',
+        paragraphs=[],
+    )
+
+    assert revision.number == 1
+    assert revision.paragraphs == []
+    assert 'content' not in type(revision).model_fields
+
+    sample_section.set_paragraphs(parse_content_to_paragraphs('Later passage.', 'sec-001'))
+    doc_repo.save_section(sample_section)
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        revision_path = f'{section_path}/{REVISIONS_GROUP_NAME}/rev_1'
+        assert h5.node_exists(section_path)
+        assert h5.node_exists(revision_path)
+        assert h5.node_exists(f'{revision_path}/segments')
+        assert h5.read_rows(f'{revision_path}/segments') == []
+        attrs = h5.get_node_attrs(revision_path)
+        assert 'content' not in attrs
+        assert 'author' not in attrs
+        colnames = h5.get_table(f'{revision_path}/segments').colnames
+        assert 'content' not in colnames
+        assert set(colnames) == set(HybridSegmentTableObject._H5_TYPES)
+
+    listed = doc_repo.list_section_revisions('doc-001', 'sec-001')
+    assert [item.number for item in listed] == [1]
+    assert listed[0].paragraphs == []
+    assert doc_repo.get_sections('doc-001')[0].paragraphs[0].segments[0].text == 'Later passage.'
+
+# ** test_int: history_nests_under_section_and_restore_keeps_embedding
+def test_int_history_nests_under_section_and_restore_keeps_embedding(doc_repo, h5_file):
+    '''Content updates and restore keep every prior revision under the section group.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc', status='draft'))
+    section = DomainEvent.handle(
+        AddDocumentSection,
+        dependencies={'document_service': doc_repo},
+        document_id='doc-001',
+        title='Intro',
+        content='Alpha',
+        heading_level=3,
+        icon='star',
+        position=0,
+    )
+    doc_repo.embed_section(section.id, [0.2, 0.4, 0.6], 'test-model')
+    embedding = doc_repo.get_embedding(section.id)
+    original_ids = (section.paragraphs[0].id, section.paragraphs[0].segments[0].id)
+    section_path = f'/kb/documents/doc-001/sections/{section.id}'
+
+    # An identical content write appends nothing and keeps stored identifiers.
+    same = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        attribute='content',
+        value='Alpha',
+        document_id='doc-001',
+    )
+    assert same.paragraphs[0].id == original_ids[0]
+    assert doc_repo.list_section_revisions('doc-001', section.id) == []
+
+    # The first content change snapshots the previous passages before replacing them.
+    updated = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        attribute='content',
+        value='Beta',
+        document_id='doc-001',
+    )
+    first = doc_repo.list_section_revisions('doc-001', section.id)
+    assert [item.number for item in first] == [1]
+    assert first[0].title == 'Intro'
+    assert first[0].content_type == 'markdown'
+    assert first[0].paragraphs[0].id == original_ids[0]
+    assert first[0].paragraphs[0].segments[0].id == original_ids[1]
+    assert datetime.fromisoformat(first[0].created_at).tzinfo is not None
+    assert updated.paragraphs[0].segments[0].text == 'Beta'
+    assert updated.paragraphs[0].id != original_ids[0]
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.node_exists(section_path)
+        assert h5.node_exists(f'{section_path}/{REVISIONS_GROUP_NAME}/rev_1')
+        children = list(h5.get_group('/kb/documents/doc-001/sections')._v_children.keys())
+        assert children == [section.id]
+
+    # A second content change leaves revision 1 readable.
+    DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        attribute='content',
+        value='Gamma',
+        document_id='doc-001',
+    )
+    assert [item.number for item in doc_repo.list_section_revisions('doc-001', section.id)] == [2, 1]
+    assert doc_repo.get_section_revision('doc-001', section.id, 1).paragraphs[0].id == original_ids[0]
+
+    # A heading change is not a revision.
+    renamed = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        attribute='title',
+        value='Renamed',
+        document_id='doc-001',
+    )
+    assert renamed.title == 'Renamed'
+    assert [item.number for item in doc_repo.list_section_revisions('doc-001', section.id)] == [2, 1]
+
+    # Restore writes the snapshot's identifiers and leaves the heading and vector alone.
+    restored = DomainEvent.handle(
+        RestoreDocumentSectionRevision,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        document_id='doc-001',
+        number=1,
+    )
+    assert restored.title == 'Renamed'
+    assert restored.content_type == 'markdown'
+    assert restored.heading_level == 3
+    assert restored.icon == 'star'
+    assert restored.position == 0
+    assert restored.paragraphs[0].id == original_ids[0]
+    assert restored.paragraphs[0].segments[0].text == 'Alpha'
+    assert doc_repo.get_embedding(section.id) == embedding
+    listed = DomainEvent.handle(
+        ListDocumentSectionRevisions,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        document_id='doc-001',
+    )
+    assert [item.number for item in listed] == [3, 2, 1]
+    assert listed[0].title == 'Renamed'
+    assert listed[0].paragraphs[0].segments[0].text == 'Gamma'
+    assert 'content' not in type(listed[0]).model_fields
+
+    # Restore still appends when the current passages already match the snapshot.
+    DomainEvent.handle(
+        RestoreDocumentSectionRevision,
+        dependencies={'document_service': doc_repo},
+        id=section.id,
+        document_id='doc-001',
+        number=1,
+    )
+    assert [item.number for item in doc_repo.list_section_revisions('doc-001', section.id)] == [4, 3, 2, 1]
+    assert len(doc_repo.get('doc-001').sections) == 1
+    assert doc_repo.get('doc-001').sections[0].paragraphs[0].id == original_ids[0]
+
+    # A missing revision does not append.
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            RestoreDocumentSectionRevision,
+            dependencies={'document_service': doc_repo},
+            id=section.id,
+            document_id='doc-001',
+            number=99,
+        )
+    assert exc_info.value.error_code == 'KB_SECTION_REVISION_NOT_FOUND'
+    assert [item.number for item in doc_repo.list_section_revisions('doc-001', section.id)] == [4, 3, 2, 1]
+
+    # Deleting the section removes the nested revisions with the group.
+    doc_repo.delete_section(section.id, document_id='doc-001')
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert not h5.node_exists(section_path)
+        assert not h5.node_exists(f'{section_path}/{REVISIONS_GROUP_NAME}')
+
+# ** test_int: delete_document_removes_revisions
+def test_int_delete_document_removes_revisions(doc_repo, h5_file, sample_document, sample_section):
+    '''Deleting the document leaves no revision reachable for its section.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    doc_repo.append_section_revision(
+        document_id='doc-001',
+        section_id='sec-001',
+        title='Introduction',
+        content_type='markdown',
+        paragraphs=parse_content_to_paragraphs('Kept once.', 'sec-001'),
+    )
+
+    doc_repo.delete('doc-001')
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert not h5.node_exists('/kb/documents/doc-001')
+    assert doc_repo.list_section_revisions('doc-001', 'sec-001') == []

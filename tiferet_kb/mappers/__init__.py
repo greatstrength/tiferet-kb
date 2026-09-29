@@ -17,6 +17,7 @@ from .document import (
     DocumentTableObject,
     DocumentPropertyTableObject,
     DocumentSectionNodeObject,
+    SectionRevisionNodeObject,
 )
 from .document_link import (
     DocumentLinkAggregate,

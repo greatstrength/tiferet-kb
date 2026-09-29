@@ -25,6 +25,7 @@ from ..mappers.document import (
     DocumentTableObject,
     DocumentPropertyTableObject,
     DocumentSectionNodeObject,
+    SectionRevisionNodeObject,
 )
 from ..mappers.document_link import (
     DocumentLinkAggregate,
@@ -68,6 +69,9 @@ H5_PROPERTY_NAME_TOO_LONG_ID = 'H5_PROPERTY_NAME_TOO_LONG'
 # ** constant: h5_property_value_too_long_id
 H5_PROPERTY_VALUE_TOO_LONG_ID = 'H5_PROPERTY_VALUE_TOO_LONG'
 
+# ** constant: revisions_group_name
+REVISIONS_GROUP_NAME = 'revisions'
+
 # *** repos
 
 # ** repo: document_h5_repository
@@ -97,6 +101,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
     are stamped with ``schema_version`` on first create; ``verify`` is the
     opt-in check. Link rows are removed through the client, not
     ``remove_node``. Deleting the last link leaves the table node.
+    Revisions nest at
+    ``/kb/documents/<document_id>/sections/<section_id>/revisions/rev_<number>``.
+    ``save_section`` replaces the live ``segments`` table and does not remove
+    that collection.
     '''
 
     # * attribute: node_repo
@@ -690,21 +698,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             )
 
             # Write all segments with denormalized paragraph metadata.
-            for paragraph in section.paragraphs:
-                for segment in paragraph.segments:
-                    obj = HybridSegmentTableObject(
-                        paragraph_id=paragraph.id,
-                        paragraph_position=paragraph.position,
-                        block_type=paragraph.block_type,
-                        id=segment.id,
-                        position=segment.position,
-                        text=segment.text,
-                        format_type=segment.format_type,
-                        link_url=segment.link_url or '',
-                    )
-                    obj.to_row(t)
-
-            t.flush()
+            self._write_segment_rows(t, section.paragraphs)
 
     # * method: delete_section
     def delete_section(self, section_id: str, document_id: str = None) -> None:
@@ -891,6 +885,158 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
         # The row was deleted.
         return True
+
+    # * method: append_section_revision
+    def append_section_revision(self,
+            document_id: str,
+            section_id: str,
+            title: str,
+            content_type: str,
+            paragraphs: List[Paragraph],
+        ):
+        '''
+        Append a snapshot under the existing section group.
+
+        The next number and the snapshot timestamp are chosen here, not by
+        the caller. The section group is not created and is not replaced.
+        An empty paragraph list still writes a revision group and an empty
+        segments table.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :param title: The heading to snapshot.
+        :type title: str
+        :param content_type: The content type to snapshot.
+        :type content_type: str
+        :param paragraphs: The paragraph model to copy.
+        :type paragraphs: List[Paragraph]
+        :return: The appended revision, including its assigned number.
+        :rtype: SectionRevision
+        '''
+
+        # Copy before writing so the revision does not share the live list.
+        copied = [paragraph.model_copy(deep=True) for paragraph in paragraphs]
+
+        with self.client() as h5:
+
+            # Refuse to invent a section group just to hang a revision on it.
+            section_group = self._section_group(document_id, section_id)
+            if not h5.node_exists(section_group):
+                ServiceError.raise_for(
+                    self,
+                    a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+                    message='Document section not found.',
+                    section_id=section_id,
+                )
+
+            # Choose the next number from the collection as it exists now.
+            revisions_group = f'{section_group}/{REVISIONS_GROUP_NAME}'
+            self._ensure_path(h5, revisions_group)
+            number = self._next_revision_number(h5, revisions_group)
+            created_at = datetime.now(timezone.utc).isoformat()
+
+            # Write the header onto a new group. Do not remove any node.
+            revision_group = f'{revisions_group}/rev_{number}'
+            h5.create_group(revision_group, title=f'Revision {number}')
+            node_obj = SectionRevisionNodeObject(
+                document_id=document_id,
+                section_id=section_id,
+                number=number,
+                created_at=created_at,
+                title=title,
+                content_type=content_type,
+            )
+            for attr_name, attr_value in node_obj.to_attrs().items():
+                h5.set_node_attr(revision_group, attr_name, attr_value)
+
+            # Create the segments table even when the snapshot has no rows.
+            segments_path = f'{revision_group}/segments'
+            table = self.table_repo.ensure_table(
+                h5,
+                segments_path,
+                HybridSegmentTableObject,
+                title='Segments',
+            )
+            self._write_segment_rows(table, copied)
+
+        # Return the snapshot that was written, not the live section.
+        return node_obj.map(paragraphs=copied)
+
+    # * method: list_section_revisions
+    def list_section_revisions(self, document_id: str, section_id: str) -> List:
+        '''
+        List a section's revisions, highest number first.
+
+        A missing file or a missing revisions collection is an empty list.
+        The file is not created and is not rewritten.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: Revisions for that section, newest number first.
+        :rtype: List
+        '''
+
+        # A missing file is an empty history. Do not create it.
+        if not self.file_exists():
+            return []
+
+        with self.client(mode='r') as h5:
+            revisions_group = (
+                f'{self._section_group(document_id, section_id)}/{REVISIONS_GROUP_NAME}'
+            )
+            if not h5.node_exists(revisions_group):
+                return []
+
+            # Read each revision group. Do not treat the live section as one.
+            revisions = []
+            root = h5.get_group(revisions_group)
+            for child in root._v_children.values():
+                revisions.append(self._read_revision(
+                    h5,
+                    child._v_pathname,
+                    document_id,
+                    section_id,
+                ))
+
+        # Number is the order. A timestamp is not the sort key.
+        revisions.sort(key=lambda revision: revision.number, reverse=True)
+        return revisions
+
+    # * method: get_section_revision
+    def get_section_revision(self, document_id: str, section_id: str, number: int):
+        '''
+        Load one numbered revision, or None when that number is absent.
+
+        A missing file or collection is None. The file is not created.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :param number: The revision number.
+        :type number: int
+        :return: The revision, or None.
+        :rtype: SectionRevision | None
+        '''
+
+        # A missing file has no revision to load. Do not create it.
+        if not self.file_exists() or number < 1:
+            return None
+
+        with self.client(mode='r') as h5:
+            revision_group = (
+                f'{self._section_group(document_id, section_id)}'
+                f'/{REVISIONS_GROUP_NAME}/rev_{number}'
+            )
+            if not h5.node_exists(revision_group):
+                return None
+
+            # Return the named snapshot, identifiers included.
+            return self._read_revision(h5, revision_group, document_id, section_id)
 
     # * method: embed_section
     def embed_section(self,
@@ -1265,46 +1411,191 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 section_attrs, id=section_id, document_id=document_id,
             )
 
-            # Read segments table and reconstruct paragraphs.
-            segments_path = f'{section_path}/segments'
-            paragraphs: List[Paragraph] = []
-
-            if h5.node_exists(segments_path):
-                rows = h5.read_rows(segments_path)
-
-                # Group rows by paragraph_id.
-                para_map: Dict[str, dict] = {}
-                for row in rows:
-                    pid = row['paragraph_id']
-                    if pid not in para_map:
-                        para_map[pid] = {
-                            'id': pid,
-                            'section_id': section_id,
-                            'position': row['paragraph_position'],
-                            'block_type': row['block_type'],
-                            'segments': [],
-                        }
-                    link_url = row.get('link_url', '')
-                    para_map[pid]['segments'].append(TextSegment(
-                        id=row['id'],
-                        position=row['position'],
-                        text=row['text'],
-                        format_type=row['format_type'],
-                        link_url=link_url if link_url else None,
-                    ))
-
-                # Sort segments within each paragraph.
-                for pdata in para_map.values():
-                    pdata['segments'].sort(key=lambda s: s.position)
-                    paragraphs.append(Paragraph(**pdata))
-
-                paragraphs.sort(key=lambda p: p.position)
+            # Read the live segments table only. Revisions are not sections.
+            paragraphs = self._read_paragraphs(
+                h5,
+                f'{section_path}/segments',
+                section_id,
+            )
 
             section = section_obj.map(paragraphs=paragraphs)
             sections.append(section)
 
         sections.sort(key=lambda s: s.position)
         return sections
+
+    # * method: _section_group
+    def _section_group(self, document_id: str, section_id: str) -> str:
+        '''
+        Return the HDF5 path of a section group.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: The section group path.
+        :rtype: str
+        '''
+
+        # Revisions nest under this path. Do not invent a second root.
+        return f'{DOCUMENTS_GROUP}/{document_id}/sections/{section_id}'
+
+    # * method: _next_revision_number
+    def _next_revision_number(self, h5, revisions_group: str) -> int:
+        '''
+        Choose the next unused revision number from the collection as stored.
+
+        Called within an already-open ``h5`` context. Numbers start at 1
+        and are never reused.
+
+        :param h5: The open H5Client instance.
+        :param revisions_group: The revisions collection path.
+        :type revisions_group: str
+        :return: The next positive revision number.
+        :rtype: int
+        '''
+
+        # The first snapshot of a section is revision 1.
+        if not h5.node_exists(revisions_group):
+            return 1
+
+        # Read stored numbers, not a list held by the caller.
+        numbers = []
+        root = h5.get_group(revisions_group)
+        for child in root._v_children.values():
+            attrs = h5.get_node_attrs(child._v_pathname)
+            number = attrs.get('number')
+            if hasattr(number, 'item'):
+                number = number.item()
+            try:
+                number = int(number)
+            except (TypeError, ValueError):
+                continue
+            if number >= 1:
+                numbers.append(number)
+
+        # Increase by one from the highest stored number.
+        if not numbers:
+            return 1
+        return max(numbers) + 1
+
+    # * method: _read_revision
+    def _read_revision(self, h5, revision_group: str, document_id: str, section_id: str):
+        '''
+        Read one revision group into a section revision.
+
+        Called within an already-open ``h5`` context. An empty segments
+        table is an empty paragraph list, not a missing revision.
+
+        :param h5: The open H5Client instance.
+        :param revision_group: The revision group path.
+        :type revision_group: str
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The parent section identifier.
+        :type section_id: str
+        :return: The section revision.
+        :rtype: SectionRevision
+        '''
+
+        # Read the header attributes, then the nested paragraph model.
+        node_obj = SectionRevisionNodeObject.from_attrs(
+            h5.get_node_attrs(revision_group),
+            document_id=document_id,
+            section_id=section_id,
+        )
+        paragraphs = self._read_paragraphs(
+            h5,
+            f'{revision_group}/segments',
+            section_id,
+        )
+
+        # Return the snapshot. It has no content string.
+        return node_obj.map(paragraphs=paragraphs)
+
+    # * method: _read_paragraphs
+    def _read_paragraphs(self, h5, segments_path: str, section_id: str) -> List[Paragraph]:
+        '''
+        Rebuild paragraphs from a segments table.
+
+        An absent table is an empty paragraph list. Called within an
+        already-open ``h5`` context.
+
+        :param h5: The open H5Client instance.
+        :param segments_path: The segments table path.
+        :type segments_path: str
+        :param section_id: The parent section identifier stamped on each paragraph.
+        :type section_id: str
+        :return: Paragraphs ordered by position.
+        :rtype: List[Paragraph]
+        '''
+
+        # An absent table has no passages.
+        if not h5.node_exists(segments_path):
+            return []
+
+        # Group rows by paragraph, keeping stored identifiers.
+        rows = h5.read_rows(segments_path)
+        para_map: Dict[str, dict] = {}
+        for row in rows:
+            pid = row['paragraph_id']
+            if pid not in para_map:
+                para_map[pid] = {
+                    'id': pid,
+                    'section_id': section_id,
+                    'position': row['paragraph_position'],
+                    'block_type': row['block_type'],
+                    'segments': [],
+                }
+            link_url = row.get('link_url', '')
+            para_map[pid]['segments'].append(TextSegment(
+                id=row['id'],
+                position=row['position'],
+                text=row['text'],
+                format_type=row['format_type'],
+                link_url=link_url if link_url else None,
+            ))
+
+        # Sort segments, then paragraphs, into stored order.
+        paragraphs: List[Paragraph] = []
+        for pdata in para_map.values():
+            pdata['segments'].sort(key=lambda segment: segment.position)
+            paragraphs.append(Paragraph(**pdata))
+        paragraphs.sort(key=lambda paragraph: paragraph.position)
+        return paragraphs
+
+    # * method: _write_segment_rows
+    def _write_segment_rows(self, table, paragraphs: List[Paragraph]) -> None:
+        '''
+        Append paragraph segments onto an already-created segments table.
+
+        Column widths are the live ``HybridSegmentTableObject`` widths.
+        An empty paragraph list writes no rows.
+
+        :param table: The open PyTables table.
+        :param paragraphs: The paragraphs to write.
+        :type paragraphs: List[Paragraph]
+        :return: None
+        :rtype: None
+        '''
+
+        # Write denormalized paragraph metadata onto every segment row.
+        for paragraph in paragraphs:
+            for segment in paragraph.segments:
+                obj = HybridSegmentTableObject(
+                    paragraph_id=paragraph.id,
+                    paragraph_position=paragraph.position,
+                    block_type=paragraph.block_type,
+                    id=segment.id,
+                    position=segment.position,
+                    text=segment.text,
+                    format_type=segment.format_type,
+                    link_url=segment.link_url or '',
+                )
+                obj.to_row(table)
+
+        # Flush even when there are no rows, so the empty table is real.
+        table.flush()
 
     # * method: _find_and_remove_section
     def _find_and_remove_section(self, h5, section_id: str) -> None:

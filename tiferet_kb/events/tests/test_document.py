@@ -12,6 +12,12 @@ from tiferet.assets import TiferetError
 
 from ...interfaces.document import DocumentService
 from ...interfaces.tag import TagService
+from ...assets.errors import (
+    KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+    KB_SECTION_REVISION_NOT_FOUND_ID,
+)
+from ...domain.document import SectionRevision
+from ...domain.segment import Paragraph, TextSegment
 from ...mappers.document import DocumentAggregate, DocumentSectionAggregate
 from ..document import (
     AddDocument,
@@ -22,6 +28,8 @@ from ..document import (
     RemoveDocument,
     AddDocumentSection,
     UpdateDocumentSection,
+    ListDocumentSectionRevisions,
+    RestoreDocumentSectionRevision,
     RemoveDocumentSection,
     ReorderDocumentSections,
 )
@@ -312,6 +320,7 @@ def test_add_document_section_success(mock_document_service):
     assert len(result.paragraphs) == 1
     assert result.paragraphs[0].segments[1].format_type == 'bold'
     mock_document_service.save_section.assert_called_once()
+    mock_document_service.append_section_revision.assert_not_called()
 
 # ** test: add_document_section_with_position
 def test_add_document_section_with_position(mock_document_service):
@@ -388,7 +397,11 @@ def test_update_document_section_success(mock_document_service, sample_section):
     # Content was re-parsed into paragraphs with formatting.
     assert len(result.paragraphs) == 1
     assert result.paragraphs[0].segments[1].format_type == 'bold'
+    assert 'content' not in type(result).model_fields
+    mock_document_service.append_section_revision.assert_called_once()
     mock_document_service.save_section.assert_called_once()
+    names = [call[0] for call in mock_document_service.mock_calls]
+    assert names.index('append_section_revision') < names.index('save_section')
 
 # ** test: update_document_section_rename
 def test_update_document_section_rename(mock_document_service, sample_section):
@@ -406,6 +419,7 @@ def test_update_document_section_rename(mock_document_service, sample_section):
     )
 
     assert result.title == 'Updated Title'
+    mock_document_service.append_section_revision.assert_not_called()
 
 # ** test: update_document_section_invalid_attribute
 def test_update_document_section_invalid_attribute(mock_document_service):
@@ -479,6 +493,7 @@ def test_reorder_document_sections_success(mock_document_service):
 
     assert result == 'doc-001'
     mock_document_service.reorder_sections.assert_called_once_with('doc-001', ['sec-002', 'sec-001'])
+    mock_document_service.append_section_revision.assert_not_called()
 
 # ** test: reorder_document_sections_document_not_found
 def test_reorder_document_sections_document_not_found(mock_document_service):
@@ -662,3 +677,202 @@ def test_update_document_rejects_visibility_attribute(mock_document_service):
             value='private',
         )
     assert exc_info.value.error_code == 'KB_INVALID_DOCUMENT_ATTRIBUTE'
+
+# ** test: update_section_attributes_append_no_revision
+@pytest.mark.parametrize('attribute,value', [
+    ('heading_level', 3),
+    ('icon', 'star'),
+    ('content_type', 'text'),
+])
+def test_update_section_attributes_append_no_revision(mock_document_service, sample_section, attribute, value):
+    '''Heading level, icon, and content type do not snapshot passages.'''
+
+    mock_document_service.get_sections.return_value = [sample_section]
+
+    DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+        attribute=attribute,
+        value=value,
+        document_id='doc-001',
+    )
+
+    mock_document_service.append_section_revision.assert_not_called()
+    mock_document_service.save_section.assert_called_once()
+
+# ** test: update_document_appends_no_revision
+def test_update_document_appends_no_revision(mock_document_service, sample_document):
+    '''A header update is not section history.'''
+
+    mock_document_service.get.return_value = sample_document
+
+    DomainEvent.handle(
+        UpdateDocument,
+        dependencies={'document_service': mock_document_service},
+        id='doc-001',
+        attribute='title',
+        value='Renamed',
+    )
+
+    mock_document_service.append_section_revision.assert_not_called()
+
+# ** test: identical_content_write_does_not_save
+def test_identical_content_write_does_not_save(mock_document_service, sample_section):
+    '''An identical content write keeps stored identifiers and does not save.'''
+
+    sample_section.set_paragraphs([
+        Paragraph(
+            id='kept-p',
+            section_id='sec-001',
+            position=0,
+            block_type='normal',
+            segments=[TextSegment(
+                id='kept-s',
+                position=0,
+                text='Hello world',
+                format_type='plain',
+            )],
+        ),
+    ])
+    updated_at = sample_section.updated_at
+    mock_document_service.get_sections.return_value = [sample_section]
+
+    result = DomainEvent.handle(
+        UpdateDocumentSection,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+        attribute='content',
+        value='Hello world',
+        document_id='doc-001',
+    )
+
+    assert result.paragraphs[0].id == 'kept-p'
+    assert result.paragraphs[0].segments[0].id == 'kept-s'
+    assert result.updated_at == updated_at
+    mock_document_service.append_section_revision.assert_not_called()
+    mock_document_service.save_section.assert_not_called()
+
+# ** test: list_revisions_requires_document_id
+def test_list_revisions_requires_document_id(mock_document_service):
+    '''A missing document id raises and does not walk documents.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            ListDocumentSectionRevisions,
+            dependencies={'document_service': mock_document_service},
+            id='sec-001',
+        )
+
+    assert exc_info.value.error_code == KB_DOCUMENT_SECTION_NOT_FOUND_ID
+    mock_document_service.get_sections.assert_not_called()
+    mock_document_service.list_section_revisions.assert_not_called()
+
+# ** test: list_revisions_missing_section
+def test_list_revisions_missing_section(mock_document_service):
+    '''A missing section raises and does not list revisions.'''
+
+    mock_document_service.get_sections.return_value = []
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            ListDocumentSectionRevisions,
+            dependencies={'document_service': mock_document_service},
+            id='missing',
+            document_id='doc-001',
+        )
+
+    assert exc_info.value.error_code == KB_DOCUMENT_SECTION_NOT_FOUND_ID
+    mock_document_service.list_section_revisions.assert_not_called()
+
+# ** test: restore_missing_revision_does_not_write
+def test_restore_missing_revision_does_not_write(mock_document_service, sample_section):
+    '''A missing revision raises and does not append or save.'''
+
+    mock_document_service.get_sections.return_value = [sample_section]
+    mock_document_service.get_section_revision.return_value = None
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            RestoreDocumentSectionRevision,
+            dependencies={'document_service': mock_document_service},
+            id='sec-001',
+            document_id='doc-001',
+            number=4,
+        )
+
+    assert exc_info.value.error_code == KB_SECTION_REVISION_NOT_FOUND_ID
+    mock_document_service.append_section_revision.assert_not_called()
+    mock_document_service.save_section.assert_not_called()
+
+# ** test: restore_non_positive_number
+def test_restore_non_positive_number(mock_document_service, sample_section):
+    '''A number less than 1 is a missing revision and writes nothing.'''
+
+    mock_document_service.get_sections.return_value = [sample_section]
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            RestoreDocumentSectionRevision,
+            dependencies={'document_service': mock_document_service},
+            id='sec-001',
+            document_id='doc-001',
+            number=0,
+        )
+
+    assert exc_info.value.error_code == KB_SECTION_REVISION_NOT_FOUND_ID
+    mock_document_service.get_section_revision.assert_not_called()
+    mock_document_service.append_section_revision.assert_not_called()
+
+# ** test: restore_puts_snapshot_paragraphs_back
+def test_restore_puts_snapshot_paragraphs_back(mock_document_service, sample_section):
+    '''Restore snapshots the current passages, then writes the chosen identifiers.'''
+
+    sample_section.set_paragraphs([
+        Paragraph(
+            id='live-p',
+            section_id='sec-001',
+            position=0,
+            block_type='normal',
+            segments=[TextSegment(id='live-s', position=0, text='Live', format_type='plain')],
+        ),
+    ])
+    sample_section.rename('Renamed')
+    revision = SectionRevision(
+        document_id='doc-001',
+        section_id='sec-001',
+        number=1,
+        title='Original',
+        content_type='code',
+        created_at='2026-01-01T00:00:00+00:00',
+        paragraphs=[
+            Paragraph(
+                id='old-p',
+                section_id='sec-001',
+                position=0,
+                block_type='normal',
+                segments=[TextSegment(id='old-s', position=0, text='Old', format_type='plain')],
+            ),
+        ],
+    )
+    mock_document_service.get_sections.return_value = [sample_section]
+    mock_document_service.get_section_revision.return_value = revision
+
+    result = DomainEvent.handle(
+        RestoreDocumentSectionRevision,
+        dependencies={'document_service': mock_document_service},
+        id='sec-001',
+        document_id='doc-001',
+        number=1,
+    )
+
+    snapshot = mock_document_service.append_section_revision.call_args.kwargs
+    assert snapshot['title'] == 'Renamed'
+    assert snapshot['paragraphs'][0].segments[0].text == 'Live'
+    assert snapshot['paragraphs'][0] is not sample_section.paragraphs[0]
+    assert result.title == 'Renamed'
+    assert result.content_type == 'markdown'
+    assert result.paragraphs[0].id == 'old-p'
+    assert result.paragraphs[0].segments[0].id == 'old-s'
+    names = [call[0] for call in mock_document_service.mock_calls]
+    assert names.index('append_section_revision') < names.index('save_section')

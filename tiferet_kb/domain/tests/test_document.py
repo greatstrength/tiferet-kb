@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 # ** app
-from ..document import Document, DocumentSection
+from ..document import Document, DocumentSection, SectionRevision
 from ..segment import Paragraph, TextSegment
 from ...mappers.document import DocumentSectionAggregate
 from ...utils.markdown import render_section
@@ -187,3 +187,90 @@ def test_document_stores_visibility_and_owner():
     assert doc.visibility == 'private'
     assert doc.owner_id == 'owner-1'
     assert doc.visibility is not None
+
+# ** test: matches_paragraphs_ignores_identifiers_and_empty_links
+def test_matches_paragraphs_ignores_identifiers_and_empty_links():
+    '''Identifiers are ignored, and an absent link URL equals an empty one.'''
+
+    stored = Paragraph(
+        id='stored-p',
+        section_id='sec-1',
+        position=0,
+        block_type='normal',
+        segments=[TextSegment(
+            id='stored-s',
+            position=0,
+            text='Hello',
+            format_type='link',
+            link_url=None,
+        )],
+    )
+    parsed = Paragraph(
+        id='parsed-p',
+        section_id='other',
+        position=0,
+        block_type='normal',
+        segments=[TextSegment(
+            id='parsed-s',
+            position=0,
+            text='Hello',
+            format_type='link',
+            link_url='',
+        )],
+    )
+    section = DocumentSection(
+        document_id='doc-1',
+        title='Intro',
+        position=0,
+        paragraphs=[stored],
+    )
+
+    assert section.matches_paragraphs([parsed]) is True
+
+# ** test: matches_paragraphs_detects_passage_differences
+def test_matches_paragraphs_detects_passage_differences():
+    '''Order, position, block type, text, and format are differences.'''
+
+    left = Paragraph(
+        id='p',
+        section_id='sec-1',
+        position=0,
+        block_type='normal',
+        segments=[TextSegment(id='s', position=0, text='Alpha', format_type='plain')],
+    )
+    section = DocumentSection(
+        document_id='doc-1',
+        title='Intro',
+        position=0,
+        paragraphs=[left],
+    )
+    different_text = left.model_copy(deep=True)
+    different_text.segments[0].text = 'Beta'
+
+    assert section.matches_paragraphs([different_text]) is False
+    assert section.matches_paragraphs([]) is False
+
+# ** test: section_revision_has_no_content_string
+def test_section_revision_has_no_content_string():
+    '''A revision is the paragraph model, not a content string or an author.'''
+
+    revision = SectionRevision(
+        document_id='doc-1',
+        section_id='sec-1',
+        number=1,
+        title='Intro',
+        content_type='markdown',
+        created_at='2026-01-01T00:00:00+00:00',
+    )
+
+    assert 'content' not in SectionRevision.model_fields
+    assert 'author' not in SectionRevision.model_fields
+    assert revision.paragraphs == []
+    with pytest.raises(Exception):
+        SectionRevision(
+            document_id='doc-1',
+            section_id='sec-1',
+            number=0,
+            title='Intro',
+            content_type='markdown',
+        )
