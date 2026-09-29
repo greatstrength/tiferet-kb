@@ -16,7 +16,7 @@ from ..document import (
     DocumentTableObject,
     DocumentSectionNodeObject,
 )
-from .settings import AggregateTestBase
+from .core import AggregateTestBase
 
 # *** constants
 

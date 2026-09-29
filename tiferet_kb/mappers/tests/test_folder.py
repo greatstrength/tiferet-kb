@@ -4,7 +4,7 @@
 
 # ** app
 from ..folder import FolderAggregate, FolderNodeObject
-from .settings import AggregateTestBase, NodeObjectTestBase
+from .core import AggregateTestBase, NodeObjectTestBase
 
 # *** constants
 

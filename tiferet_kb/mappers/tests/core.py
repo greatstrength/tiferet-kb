@@ -1,4 +1,4 @@
-"""tiferet_kb Mapper Test Settings"""
+"""tiferet_kb Mapper Test Core"""
 
 # *** imports
 

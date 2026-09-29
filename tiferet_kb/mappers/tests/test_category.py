@@ -7,7 +7,7 @@ import pytest
 
 # ** app
 from ..category import CategoryAggregate, CategoryNodeObject
-from .settings import AggregateTestBase, NodeObjectTestBase
+from .core import AggregateTestBase, NodeObjectTestBase
 
 # *** constants
 

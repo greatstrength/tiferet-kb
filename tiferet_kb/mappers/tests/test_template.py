@@ -16,7 +16,7 @@ from ..template import (
     TemplateTableObject,
     TemplateSectionTableObject,
 )
-from .settings import AggregateTestBase
+from .core import AggregateTestBase
 
 # *** constants
 
