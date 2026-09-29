@@ -94,6 +94,15 @@ KB_TAG_IN_USE_ID = 'KB_TAG_IN_USE'
 # ** constant: kb_invalid_tag_attribute_id
 KB_INVALID_TAG_ATTRIBUTE_ID = 'KB_INVALID_TAG_ATTRIBUTE'
 
+# ** constant: kb_invalid_section_comment_id
+KB_INVALID_SECTION_COMMENT_ID = 'KB_INVALID_SECTION_COMMENT'
+
+# ** constant: kb_section_comment_already_exists_id
+KB_SECTION_COMMENT_ALREADY_EXISTS_ID = 'KB_SECTION_COMMENT_ALREADY_EXISTS'
+
+# ** constant: kb_section_comment_has_replies_id
+KB_SECTION_COMMENT_HAS_REPLIES_ID = 'KB_SECTION_COMMENT_HAS_REPLIES'
+
 # *** constants
 
 # ** constant: default_errors
@@ -357,6 +366,33 @@ DEFAULT_ERRORS = {
         'name': 'Invalid Tag Attribute',
         'message': [
             {'lang': 'en_US', 'text': 'Invalid tag attribute: {attribute}'}
+        ]
+    },
+
+    # * error: KB_INVALID_SECTION_COMMENT
+    KB_INVALID_SECTION_COMMENT_ID: {
+        'id': KB_INVALID_SECTION_COMMENT_ID,
+        'name': 'Invalid Section Comment',
+        'message': [
+            {'lang': 'en_US', 'text': 'Invalid section comment: {field}'}
+        ]
+    },
+
+    # * error: KB_SECTION_COMMENT_ALREADY_EXISTS
+    KB_SECTION_COMMENT_ALREADY_EXISTS_ID: {
+        'id': KB_SECTION_COMMENT_ALREADY_EXISTS_ID,
+        'name': 'Section Comment Already Exists',
+        'message': [
+            {'lang': 'en_US', 'text': 'Section comment with ID {id} already exists'}
+        ]
+    },
+
+    # * error: KB_SECTION_COMMENT_HAS_REPLIES
+    KB_SECTION_COMMENT_HAS_REPLIES_ID: {
+        'id': KB_SECTION_COMMENT_HAS_REPLIES_ID,
+        'name': 'Section Comment Has Replies',
+        'message': [
+            {'lang': 'en_US', 'text': 'Section comment {id} still has replies'}
         ]
     },
 }

@@ -9,6 +9,8 @@ from typing import Any, List, Optional
 # ** app
 from tiferet.interfaces import Service
 
+from ..mappers.comment import SectionCommentAggregate
+
 # *** interfaces
 
 # ** interface: document_service
@@ -281,3 +283,45 @@ class DocumentService(Service):
         :rtype: None
         '''
         raise NotImplementedError('remove_embedding method is required for DocumentService.')
+
+    # * method: add_comment
+    @abstractmethod
+    def add_comment(self, comment: SectionCommentAggregate) -> bool:
+        '''
+        Insert a section comment. Does not replace an existing id.
+
+        :param comment: The comment aggregate to insert.
+        :type comment: SectionCommentAggregate
+        :return: True if the row was inserted, False if the id already exists and nothing was written.
+        :rtype: bool
+        '''
+        raise NotImplementedError('add_comment method is required for DocumentService.')
+
+    # * method: list_comments
+    @abstractmethod
+    def list_comments(self, section_id: str) -> List[SectionCommentAggregate]:
+        '''
+        List comments on a section, ordered by stored created_at then id.
+
+        A missing table is an empty list. This method does not check that the section exists.
+
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: A flat list of comment aggregates. Each item carries its own parent id.
+        :rtype: List[SectionCommentAggregate]
+        '''
+        raise NotImplementedError('list_comments method is required for DocumentService.')
+
+    # * method: delete_comment
+    @abstractmethod
+    def delete_comment(self, id: str) -> Optional[bool]:
+        '''
+        Delete one comment when nothing replies to it.
+
+        :param id: The comment identifier.
+        :type id: str
+        :return: True if the row was deleted, None if the id is not stored,
+            False if a reply still names it and nothing was deleted.
+        :rtype: bool | None
+        '''
+        raise NotImplementedError('delete_comment method is required for DocumentService.')
