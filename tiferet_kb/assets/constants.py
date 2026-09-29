@@ -17,6 +17,18 @@ KB_INVALID_DOCUMENT_STATUS_ID = 'KB_INVALID_DOCUMENT_STATUS'
 # ** constant: kb_invalid_document_attribute_id
 KB_INVALID_DOCUMENT_ATTRIBUTE_ID = 'KB_INVALID_DOCUMENT_ATTRIBUTE'
 
+# ** constant: kb_invalid_property_name_id
+KB_INVALID_PROPERTY_NAME_ID = 'KB_INVALID_PROPERTY_NAME'
+
+# ** constant: kb_invalid_property_type_id
+KB_INVALID_PROPERTY_TYPE_ID = 'KB_INVALID_PROPERTY_TYPE'
+
+# ** constant: kb_invalid_property_value_id
+KB_INVALID_PROPERTY_VALUE_ID = 'KB_INVALID_PROPERTY_VALUE'
+
+# ** constant: kb_invalid_property_filter_id
+KB_INVALID_PROPERTY_FILTER_ID = 'KB_INVALID_PROPERTY_FILTER'
+
 # ** constant: kb_invalid_section_attribute_id
 KB_INVALID_SECTION_ATTRIBUTE_ID = 'KB_INVALID_SECTION_ATTRIBUTE'
 

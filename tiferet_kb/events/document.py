@@ -9,7 +9,7 @@ from typing import Any, List
 from tiferet.events import DomainEvent
 
 from ..assets import constants as const
-from ..domain.document import Document, DocumentSection
+from ..domain.document import Document, DocumentProperty, DocumentSection
 from ..interfaces.document import DocumentService
 from ..mappers.document import DocumentAggregate, DocumentSectionAggregate
 from ..utils.markdown import parse_content_to_paragraphs
@@ -184,10 +184,17 @@ class ListDocuments(DomainEvent):
             category_id: str | None = None,
             status: str | None = None,
             title: str | None = None,
+            include_properties: bool = False,
+            property_name: str | None = None,
+            property_value: Any = None,
+            property_value_type: str | None = None,
             **kwargs,
         ) -> List[Document]:
         '''
         List documents with optional filters.
+
+        Property arguments are always forwarded, including their defaults.
+        This event does not pass ``include_sections``.
 
         :param folder_id: Optional folder identifier to filter by.
         :type folder_id: str | None
@@ -197,18 +204,39 @@ class ListDocuments(DomainEvent):
         :type status: str | None
         :param title: Optional exact document title. Empty or omitted adds no condition.
         :type title: str | None
+        :param include_properties: If True, each header carries its property bag.
+        :type include_properties: bool
+        :param property_name: Optional property name to match exactly.
+        :type property_name: str | None
+        :param property_value: Optional property value to match exactly.
+        :type property_value: Any
+        :param property_value_type: Optional declared type of the property value.
+        :type property_value_type: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: A list of documents.
         :rtype: List[Document]
         '''
 
-        # Delegate to the document service. Always forward title, including None.
+        # Reject a partial or ill-typed property filter before the service call.
+        code = DocumentProperty.filter_rejection(
+            property_name,
+            property_value,
+            property_value_type,
+        )
+        if code is not None:
+            self.raise_error(code, name=property_name, value_type=property_value_type)
+
+        # Always forward title and the property arguments, including defaults.
         return self.document_service.list(
             folder_id=folder_id,
             category_id=category_id,
             status=status,
             title=title,
+            include_properties=include_properties,
+            property_name=property_name,
+            property_value=property_value,
+            property_value_type=property_value_type,
         )
 
 # ** event: update_document
@@ -663,3 +691,124 @@ class ReorderDocumentSections(DomainEvent):
 
         # Return the document identifier.
         return document_id
+
+# ** event: set_document_property
+class SetDocumentProperty(DomainEvent):
+    '''
+    Event to set one named typed value on an existing document.
+
+    A second set of the same name replaces the value and the type. The
+    header columns are not aliases of property names.
+    '''
+
+    # * attribute: document_service
+    document_service: DocumentService
+
+    # * init
+    def __init__(self, document_service: DocumentService):
+        '''
+        Initialize the SetDocumentProperty event.
+
+        :param document_service: The document service for persistence.
+        :type document_service: DocumentService
+        '''
+
+        # Set the document service dependency.
+        self.document_service = document_service
+
+    # * method: execute
+    @DomainEvent.parameters_required(['document_id'])
+    def execute(self,
+            document_id: str,
+            name: str = None,
+            value: Any = None,
+            value_type: str = None,
+            **kwargs,
+        ) -> DocumentProperty:
+        '''
+        Set one property on an existing document.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name. Stripped once.
+        :type name: str
+        :param value: The property value. Empty string, 0, and False are values.
+        :type value: Any
+        :param value_type: The declared type: string, number, or boolean.
+        :type value_type: str
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The stored property.
+        :rtype: DocumentProperty
+        '''
+
+        # Raise the asset error before the domain object is constructed.
+        code = DocumentProperty.rejection(name, value, value_type)
+        if code is not None:
+            self.raise_error(code, name=name, value_type=value_type)
+
+        # Do not create a document for a property write.
+        self.verify(
+            expression=self.document_service.exists(document_id),
+            error_code=const.KB_DOCUMENT_NOT_FOUND_ID,
+            document_id=document_id,
+        )
+
+        # Persist the property. The service replaces the same name.
+        return self.document_service.set_property(
+            document_id,
+            name,
+            value,
+            value_type,
+        )
+
+# ** event: remove_document_property
+class RemoveDocumentProperty(DomainEvent):
+    '''
+    Event to remove one named value from a document.
+
+    A missing row or a missing document succeeds and returns the name.
+    An idempotent remove does not move the document clock.
+    '''
+
+    # * attribute: document_service
+    document_service: DocumentService
+
+    # * init
+    def __init__(self, document_service: DocumentService):
+        '''
+        Initialize the RemoveDocumentProperty event.
+
+        :param document_service: The document service for persistence.
+        :type document_service: DocumentService
+        '''
+
+        # Set the document service dependency.
+        self.document_service = document_service
+
+    # * method: execute
+    @DomainEvent.parameters_required(['document_id', 'name'])
+    def execute(self,
+            document_id: str,
+            name: str,
+            **kwargs,
+        ) -> str:
+        '''
+        Remove one property by name.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name. Stripped once for the lookup.
+        :type name: str
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The stripped property name.
+        :rtype: str
+        '''
+
+        # Look up the stored form. A missing row still returns that name.
+        stored = name.strip()
+        self.document_service.remove_property(document_id, stored)
+
+        # Return the name. Absence is success.
+        return stored

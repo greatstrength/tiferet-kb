@@ -9,6 +9,10 @@ from .constants import (
     KB_DOCUMENT_SECTION_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_STATUS_ID,
     KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
+    KB_INVALID_PROPERTY_NAME_ID,
+    KB_INVALID_PROPERTY_TYPE_ID,
+    KB_INVALID_PROPERTY_VALUE_ID,
+    KB_INVALID_PROPERTY_FILTER_ID,
     KB_INVALID_SECTION_ATTRIBUTE_ID,
     KB_CATEGORY_NOT_FOUND_ID,
     KB_CATEGORY_ALREADY_EXISTS_ID,
@@ -73,6 +77,42 @@ DEFAULT_ERRORS = {
         'name': 'Invalid Document Attribute',
         'message': [
             {'lang': 'en_US', 'text': 'Invalid document attribute: {attribute}'}
+        ]
+    },
+
+    # * error: KB_INVALID_PROPERTY_NAME
+    KB_INVALID_PROPERTY_NAME_ID: {
+        'id': KB_INVALID_PROPERTY_NAME_ID,
+        'name': 'Invalid Property Name',
+        'message': [
+            {'lang': 'en_US', 'text': 'Invalid property name: {name}'}
+        ]
+    },
+
+    # * error: KB_INVALID_PROPERTY_TYPE
+    KB_INVALID_PROPERTY_TYPE_ID: {
+        'id': KB_INVALID_PROPERTY_TYPE_ID,
+        'name': 'Invalid Property Type',
+        'message': [
+            {'lang': 'en_US', 'text': 'Invalid property value type: {value_type}. Must be string, number, or boolean'}
+        ]
+    },
+
+    # * error: KB_INVALID_PROPERTY_VALUE
+    KB_INVALID_PROPERTY_VALUE_ID: {
+        'id': KB_INVALID_PROPERTY_VALUE_ID,
+        'name': 'Invalid Property Value',
+        'message': [
+            {'lang': 'en_US', 'text': 'Property value does not match value type {value_type}'}
+        ]
+    },
+
+    # * error: KB_INVALID_PROPERTY_FILTER
+    KB_INVALID_PROPERTY_FILTER_ID: {
+        'id': KB_INVALID_PROPERTY_FILTER_ID,
+        'name': 'Invalid Property Filter',
+        'message': [
+            {'lang': 'en_US', 'text': 'A property filter requires name, value, and value type'}
         ]
     },
 

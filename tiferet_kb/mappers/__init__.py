@@ -11,6 +11,7 @@ from .document import (
     DocumentAggregate,
     DocumentSectionAggregate,
     DocumentTableObject,
+    DocumentPropertyTableObject,
     DocumentSectionNodeObject,
 )
 from .segment import (

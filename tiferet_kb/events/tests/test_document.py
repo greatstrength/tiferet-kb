@@ -32,7 +32,6 @@ def mock_document_service() -> DocumentService:
     '''Mock DocumentService for testing.'''
     return mock.Mock(spec=DocumentService)
 
-
 # ** fixture: sample_document
 @pytest.fixture
 def sample_document() -> DocumentAggregate:
@@ -44,7 +43,6 @@ def sample_document() -> DocumentAggregate:
         created_at='2026-01-01T00:00:00+00:00',
         updated_at='2026-01-01T00:00:00+00:00',
     )
-
 
 # ** fixture: sample_section
 @pytest.fixture
@@ -80,7 +78,6 @@ def test_add_document_success(mock_document_service):
     assert result.id is not None
     mock_document_service.save.assert_called_once()
 
-
 # ** test: add_document_with_explicit_id
 def test_add_document_with_explicit_id(mock_document_service):
     '''Test creation with an explicit ID.'''
@@ -96,7 +93,6 @@ def test_add_document_with_explicit_id(mock_document_service):
 
     assert result.id == 'custom-id'
 
-
 # ** test: add_document_duplicate
 def test_add_document_duplicate(mock_document_service):
     '''Test that adding a duplicate document raises an error.'''
@@ -111,7 +107,6 @@ def test_add_document_duplicate(mock_document_service):
             id='existing-id',
         )
 
-
 # ** test: add_document_missing_title
 def test_add_document_missing_title(mock_document_service):
     '''Test that AddDocument raises when title is missing.'''
@@ -121,7 +116,6 @@ def test_add_document_missing_title(mock_document_service):
             AddDocument,
             dependencies={'document_service': mock_document_service},
         )
-
 
 # ** test: get_document_success
 def test_get_document_success(mock_document_service, sample_document):
@@ -137,7 +131,6 @@ def test_get_document_success(mock_document_service, sample_document):
 
     assert result is sample_document
 
-
 # ** test: get_document_not_found
 def test_get_document_not_found(mock_document_service):
     '''Test that getting a non-existent document raises.'''
@@ -151,7 +144,6 @@ def test_get_document_not_found(mock_document_service):
             id='nonexistent',
         )
 
-
 # ** test: list_documents_success
 def test_list_documents_success(mock_document_service, sample_document):
     '''Test listing documents.'''
@@ -164,7 +156,6 @@ def test_list_documents_success(mock_document_service, sample_document):
     )
 
     assert len(result) == 1
-
 
 # ** test: list_documents_with_filters
 def test_list_documents_with_filters(mock_document_service):
@@ -184,6 +175,10 @@ def test_list_documents_with_filters(mock_document_service):
         category_id=None,
         status='draft',
         title=None,
+        include_properties=False,
+        property_name=None,
+        property_value=None,
+        property_value_type=None,
     )
 
 # ** test: list_documents_forwards_title
@@ -203,6 +198,10 @@ def test_list_documents_forwards_title(mock_document_service):
         category_id=None,
         status=None,
         title='memory:agent:default',
+        include_properties=False,
+        property_name=None,
+        property_value=None,
+        property_value_type=None,
     )
 
 # ** test: update_document_success
@@ -222,7 +221,6 @@ def test_update_document_success(mock_document_service, sample_document):
     assert result.title == 'Updated Title'
     mock_document_service.save.assert_called_once()
 
-
 # ** test: update_document_invalid_attribute
 def test_update_document_invalid_attribute(mock_document_service):
     '''Test that updating an invalid attribute raises.'''
@@ -235,7 +233,6 @@ def test_update_document_invalid_attribute(mock_document_service):
             attribute='nonexistent',
             value='bad',
         )
-
 
 # ** test: update_document_invalid_status
 def test_update_document_invalid_status(mock_document_service):
@@ -250,7 +247,6 @@ def test_update_document_invalid_status(mock_document_service):
             value='invalid_status',
         )
 
-
 # ** test: remove_document_success
 def test_remove_document_success(mock_document_service):
     '''Test successful removal of a document.'''
@@ -263,7 +259,6 @@ def test_remove_document_success(mock_document_service):
 
     assert result == 'doc-001'
     mock_document_service.delete.assert_called_once_with('doc-001')
-
 
 # *** section event tests
 
@@ -291,7 +286,6 @@ def test_add_document_section_success(mock_document_service):
     assert result.paragraphs[0].segments[1].format_type == 'bold'
     mock_document_service.save_section.assert_called_once()
 
-
 # ** test: add_document_section_with_position
 def test_add_document_section_with_position(mock_document_service):
     '''Test adding a section with an explicit position.'''
@@ -308,7 +302,6 @@ def test_add_document_section_with_position(mock_document_service):
 
     assert result.position == 1
 
-
 # ** test: add_document_section_invalid_content_type
 def test_add_document_section_invalid_content_type(mock_document_service):
     '''Test that an invalid content type raises.'''
@@ -323,7 +316,6 @@ def test_add_document_section_invalid_content_type(mock_document_service):
             title='Bad',
             content_type='invalid',
         )
-
 
 # ** test: add_document_section_document_not_found
 def test_add_document_section_document_not_found(mock_document_service):
@@ -340,7 +332,6 @@ def test_add_document_section_document_not_found(mock_document_service):
             content_type='text',
         )
 
-
 # ** test: add_document_section_missing_params
 def test_add_document_section_missing_title(mock_document_service):
     '''Test that missing title raises.'''
@@ -351,7 +342,6 @@ def test_add_document_section_missing_title(mock_document_service):
             dependencies={'document_service': mock_document_service},
             document_id='doc-001',
         )
-
 
 # ** test: update_document_section_success
 def test_update_document_section_success(mock_document_service, sample_section):
@@ -373,7 +363,6 @@ def test_update_document_section_success(mock_document_service, sample_section):
     assert result.paragraphs[0].segments[1].format_type == 'bold'
     mock_document_service.save_section.assert_called_once()
 
-
 # ** test: update_document_section_rename
 def test_update_document_section_rename(mock_document_service, sample_section):
     '''Test renaming a section.'''
@@ -391,7 +380,6 @@ def test_update_document_section_rename(mock_document_service, sample_section):
 
     assert result.title == 'Updated Title'
 
-
 # ** test: update_document_section_invalid_attribute
 def test_update_document_section_invalid_attribute(mock_document_service):
     '''Test that an invalid section attribute raises.'''
@@ -405,7 +393,6 @@ def test_update_document_section_invalid_attribute(mock_document_service):
             value='bad',
             document_id='doc-001',
         )
-
 
 # ** test: update_document_section_not_found
 def test_update_document_section_not_found(mock_document_service):
@@ -423,7 +410,6 @@ def test_update_document_section_not_found(mock_document_service):
             document_id='doc-001',
         )
 
-
 # ** test: update_document_section_invalid_content_type
 def test_update_document_section_invalid_content_type(mock_document_service):
     '''Test that an invalid content_type value raises.'''
@@ -438,7 +424,6 @@ def test_update_document_section_invalid_content_type(mock_document_service):
             document_id='doc-001',
         )
 
-
 # ** test: remove_document_section_success
 def test_remove_document_section_success(mock_document_service):
     '''Test successful removal of a section.'''
@@ -451,7 +436,6 @@ def test_remove_document_section_success(mock_document_service):
 
     assert result == 'sec-001'
     mock_document_service.delete_section.assert_called_once_with('sec-001')
-
 
 # ** test: reorder_document_sections_success
 def test_reorder_document_sections_success(mock_document_service):
@@ -468,7 +452,6 @@ def test_reorder_document_sections_success(mock_document_service):
 
     assert result == 'doc-001'
     mock_document_service.reorder_sections.assert_called_once_with('doc-001', ['sec-002', 'sec-001'])
-
 
 # ** test: reorder_document_sections_document_not_found
 def test_reorder_document_sections_document_not_found(mock_document_service):

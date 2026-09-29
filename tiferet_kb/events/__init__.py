@@ -20,6 +20,8 @@ from .document import (
     UpdateDocumentSection,
     RemoveDocumentSection,
     ReorderDocumentSections,
+    SetDocumentProperty,
+    RemoveDocumentProperty,
 )
 from .template import (
     AddTemplate,
