@@ -129,3 +129,18 @@ errors:
     message:
       - lang: en_US
         text: 'Invalid tag attribute: {attribute}'
+  kb_invalid_section_comment:
+    name: Invalid Section Comment
+    message:
+      - lang: en_US
+        text: 'Invalid section comment: {field}'
+  kb_section_comment_already_exists:
+    name: Section Comment Already Exists
+    message:
+      - lang: en_US
+        text: 'Section comment with ID {id} already exists'
+  kb_section_comment_has_replies:
+    name: Section Comment Has Replies
+    message:
+      - lang: en_US
+        text: 'Section comment {id} still has replies'

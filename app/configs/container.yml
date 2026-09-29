@@ -124,3 +124,13 @@ attrs:
   list_document_tags_event:
     module_path: tiferet_kb.events.tag
     class_name: ListDocumentTags
+  # Comment events
+  add_section_comment_event:
+    module_path: tiferet_kb.events.comment
+    class_name: AddSectionComment
+  list_section_comments_event:
+    module_path: tiferet_kb.events.comment
+    class_name: ListSectionComments
+  remove_section_comment_event:
+    module_path: tiferet_kb.events.comment
+    class_name: RemoveSectionComment

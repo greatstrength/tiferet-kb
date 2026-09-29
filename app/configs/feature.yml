@@ -244,3 +244,23 @@ features:
       commands:
         - attribute_id: list_document_tags_event
           name: List document tags
+  # Comment features
+  comment:
+    add:
+      name: Add Section Comment
+      description: Add a plain-text note to a section
+      commands:
+        - attribute_id: add_section_comment_event
+          name: Add section comment
+    list:
+      name: List Section Comments
+      description: List comments on a section
+      commands:
+        - attribute_id: list_section_comments_event
+          name: List section comments
+    remove:
+      name: Remove Section Comment
+      description: Remove a section comment
+      commands:
+        - attribute_id: remove_section_comment_event
+          name: Remove section comment
