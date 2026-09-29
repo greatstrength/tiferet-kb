@@ -16,6 +16,7 @@ from ..utils.markdown import (
     split_markdown_sections,
     join_markdown_sections,
     parse_content_to_paragraphs,
+    render_section,
 )
 
 # *** events
@@ -133,7 +134,6 @@ class ImportMarkdownDocument(DomainEvent):
         # Return the assembled document.
         return document
 
-
 # ** event: export_document_markdown
 class ExportDocumentMarkdown(DomainEvent):
     '''
@@ -189,49 +189,11 @@ class ExportDocumentMarkdown(DomainEvent):
         section_dicts = []
         for section in ordered_sections:
 
-            # Reconstruct content from paragraphs if available.
-            content = self._reconstruct_content(section)
+            # Reconstruct one section body. Export stays document-wide.
             section_dicts.append({
                 'title': section.title,
-                'content': content,
+                'content': render_section(section),
             })
 
         # Join sections into markdown.
         return join_markdown_sections(section_dicts)
-
-    # * method: _reconstruct_content
-    def _reconstruct_content(self, section) -> str:
-        '''
-        Reconstruct plain markdown content from a section's paragraphs.
-
-        If the section has no paragraphs, returns an empty string.
-
-        :param section: The document section.
-        :return: The reconstructed markdown content.
-        :rtype: str
-        '''
-
-        if not section.paragraphs:
-            return ''
-
-        from ..utils.markdown import reassemble_paragraph
-
-        parts: List[str] = []
-        for para in sorted(section.paragraphs, key=lambda p: p.position):
-
-            if para.block_type == 'code_block':
-                # Reconstruct fenced code block.
-                text = para.segments[0].text if para.segments else ''
-                parts.append(f'```\n{text}\n```')
-
-            elif para.block_type == 'quote':
-                # Reconstruct quote block.
-                text = reassemble_paragraph(para.segments)
-                lines = text.split('\n')
-                parts.append('\n'.join(f'> {line}' for line in lines))
-
-            else:
-                # Normal paragraph.
-                parts.append(reassemble_paragraph(para.segments))
-
-        return '\n\n'.join(parts)

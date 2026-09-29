@@ -577,12 +577,13 @@ def test_int_embed_dimension_mismatch(doc_repo, sample_document, sample_section)
 
 # ** test_int: search_similar_signature
 def test_int_search_similar_signature():
-    '''search_similar keeps folder_id and category_id and has no document_id.'''
+    '''search_similar keeps folder_id and category_id and accepts document_id.'''
 
     params = inspect.signature(DocumentH5Repository.search_similar).parameters
     assert 'folder_id' in params
     assert 'category_id' in params
-    assert 'document_id' not in params
+    assert 'document_id' in params
+    assert params['document_id'].default is None
 
 # ** test_int: delete_section_scan_preserves_header_and_arrays
 def test_int_delete_section_scan_preserves_header_and_arrays(doc_repo, h5_file, sample_document, sample_section):
@@ -611,3 +612,128 @@ def test_int_delete_document_missing_is_noop(doc_repo, sample_document):
 
     doc_repo.save(sample_document)
     doc_repo.delete('nonexistent')
+
+# *** tests: RFP-009 agent substrate
+
+# ** test_int: content_round_trip_does_not_store_content
+def test_int_content_round_trip_does_not_store_content(doc_repo, h5_file):
+    '''A content string round-trips through paragraphs and is not a group attribute.'''
+
+    doc_repo.save(DocumentAggregate(id='ns-1', title='memory:agent:default'))
+    section = DocumentSectionAggregate(
+        id='fact-1',
+        document_id='ns-1',
+        title='user prefers',
+        content='user prefers Python',
+    )
+    doc_repo.save_section(section)
+
+    loaded = doc_repo.get_sections('ns-1')
+    assert len(loaded) == 1
+    assert loaded[0].content == 'user prefers Python'
+
+    section_path = '/kb/documents/ns-1/sections/fact-1'
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert 'content' not in h5.get_node_attrs(section_path)
+        rows = h5.read_rows(f'{section_path}/segments')
+        assert rows[0]['text'] == 'user prefers Python'
+
+# ** test_int: list_title_is_exact_header_equality
+def test_int_list_title_is_exact_header_equality(doc_repo):
+    '''Title is exact, case-sensitive, and conjunctive. Empty title adds no condition.'''
+
+    doc_repo.save(DocumentAggregate(
+        id='ns-1', title='memory:agent:default', folder_id='folder-1',
+        category_id='notes', status='draft',
+    ))
+    doc_repo.save(DocumentAggregate(
+        id='ns-2', title='memory:agent:default', folder_id='folder-2',
+        category_id='notes', status='published',
+    ))
+    doc_repo.save(DocumentAggregate(
+        id='other', title='Memory:agent:default', folder_id='folder-1',
+        category_id='notes', status='draft',
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-other', document_id='other', title='Not loaded', position=0,
+    ))
+
+    assert {d.id for d in doc_repo.list()} == {'ns-1', 'ns-2', 'other'}
+    assert {d.id for d in doc_repo.list(title='')} == {'ns-1', 'ns-2', 'other'}
+    matched = doc_repo.list(title='memory:agent:default', include_sections=True)
+    assert {d.id for d in matched} == {'ns-1', 'ns-2'}
+    assert all(d.sections == [] for d in matched)
+
+    conjunct = doc_repo.list(
+        title='memory:agent:default',
+        folder_id='folder-1',
+        category_id='notes',
+        status='draft',
+    )
+    assert [d.id for d in conjunct] == ['ns-1']
+
+# ** test_int: list_title_escapes_colon_and_quote
+def test_int_list_title_escapes_colon_and_quote(doc_repo, monkeypatch):
+    '''A colon title and a quote title match only themselves and do not scan the file.'''
+
+    colon = 'memory:agent:default'
+    quoted = 'say "hi"'
+    doc_repo.save(DocumentAggregate(id='colon', title=colon))
+    doc_repo.save(DocumentAggregate(id='quoted', title=quoted))
+    doc_repo.save(DocumentAggregate(id='other', title='other title'))
+
+    read_calls = []
+    original = H5Client.read_rows
+
+    def spy_read(self, path, start=None, stop=None, condition=None):
+        read_calls.append(condition)
+        return original(self, path, start=start, stop=stop, condition=condition)
+
+    monkeypatch.setattr(H5Client, 'read_rows', spy_read)
+
+    assert [d.id for d in doc_repo.list(title=colon)] == ['colon']
+    assert [d.id for d in doc_repo.list(title=quoted)] == ['quoted']
+    assert read_calls == []
+
+# ** test_int: search_similar_document_id_masks_before_limit
+def test_int_search_similar_document_id_masks_before_limit(doc_repo, monkeypatch):
+    '''document_id restricts candidates before limit and does not scan headers when alone.'''
+
+    doc_repo.save(DocumentAggregate(id='wide', title='Wide', folder_id='folder-1', category_id='notes'))
+    doc_repo.save(DocumentAggregate(id='ns-1', title='Namespace', folder_id='folder-1', category_id='notes'))
+    doc_repo.save_section(DocumentSectionAggregate(id='wide-1', document_id='wide', title='W', position=0))
+    doc_repo.save_section(DocumentSectionAggregate(id='ns-sec', document_id='ns-1', title='N', position=0))
+    doc_repo.embed_section('wide-1', [1.0, 0.0, 0.0], 'test-model')
+    doc_repo.embed_section('ns-sec', [0.2, 0.9, 0.0], 'test-model')
+
+    header_reads = []
+    original = H5Client.read_rows
+
+    def spy_read(self, path, start=None, stop=None, condition=None):
+        if path == DOCUMENTS_TABLE:
+            header_reads.append(condition)
+        return original(self, path, start=start, stop=stop, condition=condition)
+
+    monkeypatch.setattr(H5Client, 'read_rows', spy_read)
+
+    file_wide = doc_repo.search_similar([1.0, 0.0, 0.0], limit=1)
+    assert file_wide[0]['section_id'] == 'wide-1'
+
+    scoped = doc_repo.search_similar([1.0, 0.0, 0.0], limit=1, document_id='ns-1')
+    assert [hit['section_id'] for hit in scoped] == ['ns-sec']
+    assert header_reads == []
+
+    assert doc_repo.search_similar([1.0, 0.0, 0.0], document_id='missing') == []
+    both = doc_repo.search_similar(
+        [1.0, 0.0, 0.0],
+        document_id='ns-1',
+        folder_id='folder-1',
+        category_id='notes',
+    )
+    assert [hit['section_id'] for hit in both] == ['ns-sec']
+    mismatch = doc_repo.search_similar(
+        [1.0, 0.0, 0.0],
+        document_id='ns-1',
+        folder_id='other-folder',
+    )
+    assert mismatch == []

@@ -183,8 +183,27 @@ def test_list_documents_with_filters(mock_document_service):
         folder_id='folder-1',
         category_id=None,
         status='draft',
+        title=None,
     )
 
+# ** test: list_documents_forwards_title
+def test_list_documents_forwards_title(mock_document_service):
+    '''ListDocuments forwards an exact title, including when it is set.'''
+
+    mock_document_service.list.return_value = []
+
+    DomainEvent.handle(
+        ListDocuments,
+        dependencies={'document_service': mock_document_service},
+        title='memory:agent:default',
+    )
+
+    mock_document_service.list.assert_called_once_with(
+        folder_id=None,
+        category_id=None,
+        status=None,
+        title='memory:agent:default',
+    )
 
 # ** test: update_document_success
 def test_update_document_success(mock_document_service, sample_document):

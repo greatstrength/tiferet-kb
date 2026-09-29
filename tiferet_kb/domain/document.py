@@ -65,7 +65,7 @@ class DocumentSection(DomainObject):
 
     # * attribute: position
     position: int = Field(
-        ...,
+        default=0,
         description='Zero-based ordering position within the document.',
     )
 
@@ -87,12 +87,33 @@ class DocumentSection(DomainObject):
         description='Ordered list of paragraphs with rich-text segments.',
     )
 
+    # * method: content (property)
+    @property
+    def content(self) -> str:
+        '''
+        Render this section's paragraphs as markdown text.
+
+        The value is derived. It is not a field, has no setter, and is
+        omitted from ``model_dump``.
+
+        :return: The section body, without a heading or a trailing newline.
+        :rtype: str
+        '''
+
+        # One renderer for the property and for export.
+        from ..utils.markdown import render_section
+        return render_section(self)
+
     # * method: _derive_defaults (validator)
     @model_validator(mode='before')
     @classmethod
     def _derive_defaults(cls, data: Any) -> Any:
         '''
-        Derive default values for id, created_at, and updated_at when absent.
+        Derive defaults and consume a content string into paragraphs.
+
+        ``id``, ``created_at``, and ``updated_at`` are filled when absent.
+        A ``content`` string is parsed when paragraphs are absent or empty,
+        then removed so it is not a stored field. Non-empty paragraphs win.
 
         :param data: The raw input data.
         :type data: Any
@@ -105,9 +126,20 @@ class DocumentSection(DomainObject):
             return data
         data = dict(data)
 
-        # Generate a UUID if id is not provided.
+        # Generate a UUID if id is not provided. Parse needs the identifier.
         if not data.get('id'):
             data['id'] = str(uuid4())
+
+        # Consume content before extra='forbid'. It is not a stored field.
+        if 'content' in data:
+            content = data.pop('content')
+            if not isinstance(content, str):
+                raise ValueError('content must be a string.')
+
+            # Parse only when paragraphs are absent or empty.
+            if content and not data.get('paragraphs'):
+                from ..utils.markdown import parse_content_to_paragraphs
+                data['paragraphs'] = parse_content_to_paragraphs(content, data['id'])
 
         # Set timestamps if not provided.
         now = datetime.now(timezone.utc).isoformat()
@@ -118,7 +150,6 @@ class DocumentSection(DomainObject):
 
         # Return the augmented data.
         return data
-
 
 # ** model: document
 class Document(DomainObject):

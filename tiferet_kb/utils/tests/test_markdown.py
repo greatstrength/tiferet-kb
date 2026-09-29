@@ -3,12 +3,14 @@
 # *** imports
 
 # ** app
+from tiferet_kb.utils import render_section as exported_render_section
 from ..markdown import (
     parse_paragraph_to_segments,
     reassemble_paragraph,
     split_markdown_sections,
     join_markdown_sections,
     parse_content_to_paragraphs,
+    render_section,
 )
 
 # *** tests: parse_paragraph_to_segments
@@ -225,3 +227,23 @@ def test_mixed_block_types():
     assert paragraphs[0].block_type == 'normal'
     assert paragraphs[1].block_type == 'quote'
     assert paragraphs[2].block_type == 'code_block'
+
+# *** tests: render_section
+
+# ** test: render_section_matches_reassembly
+def test_render_section_matches_reassembly():
+    '''render_section is the public body helper and adds no heading or trailing newline.'''
+
+    class Section:
+        def __init__(self, paragraphs):
+            self.paragraphs = paragraphs
+            self.title = 'Heading'
+
+    paragraphs = parse_content_to_paragraphs('user prefers Python', section_id='sec-1')
+    rendered = render_section(Section(paragraphs))
+
+    assert exported_render_section is render_section
+    assert rendered == 'user prefers Python'
+    assert not rendered.endswith('\n')
+    assert 'Heading' not in rendered
+    assert render_section(Section([])) == ''
