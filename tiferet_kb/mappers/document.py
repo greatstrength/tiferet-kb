@@ -100,7 +100,6 @@ class DocumentSectionAggregate(DocumentSection, Aggregate):
         self.content_type = content_type
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
-
 # ** mapper: document_aggregate
 class DocumentAggregate(Document, Aggregate):
     '''
@@ -173,14 +172,14 @@ class DocumentAggregate(Document, Aggregate):
         self.category_id = category_id
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
-
 # ** mapper: document_table_object
 class DocumentTableObject(TableObject):
     '''
     An HDF5 table-row representation of a document header.
 
     Stored as rows in ``/kb/documents/documents``.  The ``sections``
-    field is excluded — sections are stored in a separate table.
+    field is excluded — sections are group nodes with a nested ``segments``
+    table under ``/kb/documents/<document_id>/sections/``.
     '''
 
     # * attribute: id
@@ -263,7 +262,6 @@ class DocumentTableObject(TableObject):
 
         # Construct and return the table object.
         return cls.model_validate(data)
-
 
 # ** mapper: document_section_node_object
 class DocumentSectionNodeObject(NodeObject):

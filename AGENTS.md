@@ -116,7 +116,7 @@ RST format with `:param`, `:type`, `:return:`, `:rtype:` for all public methods.
 - **Framework:** `pytest` (with `pytest-cov`).
 - **Test location:** Co-located in `<package>/tests/` directories.
 - **Integration tests:** `tiferet_kb/tests_int/`.
-- **Mapper test harness:** `mappers/tests/settings.py` provides `AggregateTestBase` and `NodeObjectTestBase`.
+- **Mapper test harness:** `mappers/tests/core.py` provides `AggregateTestBase` and `NodeObjectTestBase`.
 - **Event testing:** Always invoke via `DomainEvent.handle(EventClass, dependencies={...}, **kwargs)`.
 - **Repo testing:** Integration tests with `tmp_path`-based real HDF5 files.
 - **Run tests:** `pytest --verbose` from project root.

@@ -126,7 +126,7 @@ The `id` is the group name.  All other fields are stored as node attributes via 
 
 ## Testing
 
-Mapper tests use the harness pattern from `tiferet_kb.mappers.tests.settings`:
+Mapper tests use the harness pattern from `tiferet_kb.mappers.tests.core`:
 
 - **`AggregateTestBase`** — Inherits `test_new` and parametrized `test_set_attribute` for valid and invalid mutations.  Subclasses add domain-specific mutation tests.
 - **`NodeObjectTestBase`** — Inherits `test_map`, `test_from_model`, `test_to_attrs_excludes_fields`, and `test_round_trip`.

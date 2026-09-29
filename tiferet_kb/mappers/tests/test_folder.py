@@ -4,7 +4,7 @@
 
 # ** app
 from ..folder import FolderAggregate, FolderNodeObject
-from .settings import AggregateTestBase, NodeObjectTestBase
+from .core import AggregateTestBase, NodeObjectTestBase
 
 # *** constants
 
@@ -19,7 +19,6 @@ AGGREGATE_SAMPLE_DATA = {
 
 # ** constant: equality_fields
 EQUALITY_FIELDS = ['id', 'name', 'parent_id', 'path', 'created_at']
-
 
 # *** classes
 
@@ -66,7 +65,6 @@ class TestFolderAggregate(AggregateTestBase):
 
         aggregate.update_path('/engineering/infra')
         assert aggregate.path == '/engineering/infra'
-
 
 # ** class: TestFolderNodeObject
 class TestFolderNodeObject(NodeObjectTestBase):

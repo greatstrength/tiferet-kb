@@ -4,7 +4,7 @@
 
 # ** app
 from ..embedding import EmbeddingRecordAggregate
-from .settings import AggregateTestBase
+from .core import AggregateTestBase
 
 # *** constants
 

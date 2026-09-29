@@ -6,13 +6,14 @@
 from typing import List, Optional
 
 # ** app
-from tiferet_h5.repos import H5Repository
+from tiferet_h5.repos import NodeRepository
 
 from ..interfaces import CategoryService
 from ..mappers import (
     CategoryAggregate,
     CategoryNodeObject,
 )
+from .core import KBNodeRepository
 
 # *** constants
 
@@ -22,7 +23,7 @@ CATEGORIES_ROOT = '/kb/categories'
 # *** repos
 
 # ** repo: category_h5_repository
-class CategoryH5Repository(H5Repository, CategoryService):
+class CategoryH5Repository(KBNodeRepository, CategoryService):
     '''
     HDF5-backed repository for knowledge base categories.
 
@@ -30,7 +31,18 @@ class CategoryH5Repository(H5Repository, CategoryService):
     at ``/kb/categories/<id>``.  Each group carries the category's
     scalar metadata (name, description, icon, color) as attributes
     via ``CategoryNodeObject``.
+
+    ``NodeRepository`` (through ``KBNodeRepository``) owns path resolution, ``save``, and ``exists``.
+    ``get`` stays overridden because the identifier is the group name and
+    is not an attribute.  ``list`` walks the child groups.  ``delete``
+    removes the group through ``KBNodeRepository.remove_node``.
     '''
+
+    # * attribute: node_cls
+    node_cls = CategoryNodeObject
+
+    # * attribute: node_path
+    node_path = f'{CATEGORIES_ROOT}/{{id}}'
 
     # * init
     def __init__(self, h5_file: str, mode: str = 'a') -> None:
@@ -57,12 +69,8 @@ class CategoryH5Repository(H5Repository, CategoryService):
         :rtype: bool
         '''
 
-        # Build the HDF5 group path for the category.
-        group_path = f'{CATEGORIES_ROOT}/{id}'
-
-        # Check node existence within a context-managed client.
-        with self.client() as h5:
-            return h5.node_exists(group_path)
+        # Delegate to the NodeRepository mixin; a missing file is False.
+        return NodeRepository.exists(self, id=id)
 
     # * method: get
     def get(self, id: str) -> Optional[CategoryAggregate]:
@@ -75,8 +83,12 @@ class CategoryH5Repository(H5Repository, CategoryService):
         :rtype: CategoryAggregate | None
         '''
 
-        # Build the HDF5 group path for the category.
-        group_path = f'{CATEGORIES_ROOT}/{id}'
+        # A missing file must not be created by a read.
+        if not self.file_exists():
+            return None
+
+        # Resolve the HDF5 group path for the category.
+        group_path = self.resolve_node_path(id=id)
 
         # Read attributes from the group node.
         with self.client() as h5:
@@ -102,6 +114,10 @@ class CategoryH5Repository(H5Repository, CategoryService):
 
         # Collect all category aggregates.
         categories: List[CategoryAggregate] = []
+
+        # A missing file yields an empty list and must not be created.
+        if not self.file_exists():
+            return categories
 
         with self.client() as h5:
 
@@ -136,28 +152,10 @@ class CategoryH5Repository(H5Repository, CategoryService):
         :rtype: None
         '''
 
-        # Build the HDF5 group path for the category.
-        group_path = f'{CATEGORIES_ROOT}/{category.id}'
-
-        # Convert the aggregate to a node object for attribute serialization.
+        # Convert the aggregate to a node object and delegate to the mixin,
+        # which creates the group when absent and writes the attributes.
         node_obj = CategoryNodeObject.from_model(category)
-        attr_data = node_obj.to_attrs()
-
-        with self.client() as h5:
-
-            # Create the group if it does not already exist.
-            if not h5.node_exists(group_path):
-
-                # Ensure the categories root exists.
-                if not h5.node_exists(CATEGORIES_ROOT):
-                    h5.create_group(CATEGORIES_ROOT, title='Knowledge Base Categories')
-
-                # Create the category group.
-                h5.create_group(group_path, title=category.name)
-
-            # Write each attribute to the group node.
-            for attr_name, attr_value in attr_data.items():
-                h5.set_node_attr(group_path, attr_name, attr_value)
+        NodeRepository.save(self, node_obj, id=category.id)
 
     # * method: delete
     def delete(self, id: str) -> None:
@@ -170,14 +168,14 @@ class CategoryH5Repository(H5Repository, CategoryService):
         :rtype: None
         '''
 
-        # Build the HDF5 group path for the category.
-        group_path = f'{CATEGORIES_ROOT}/{id}'
+        # A missing file has nothing to delete and must not be created.
+        if not self.file_exists():
+            return
+
+        # Resolve the HDF5 group path for the category.
+        group_path = self.resolve_node_path(id=id)
 
         with self.client() as h5:
 
-            # Skip silently if the group does not exist (idempotent).
-            if not h5.node_exists(group_path):
-                return
-
-            # Remove the group node and all its contents.
-            h5.h5file.remove_node(group_path, recursive=True)
+            # Remove the group and its contents; a missing node is a no-op.
+            self.remove_node(h5, group_path, recursive=True)

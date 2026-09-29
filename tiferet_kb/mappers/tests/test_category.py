@@ -7,7 +7,7 @@ import pytest
 
 # ** app
 from ..category import CategoryAggregate, CategoryNodeObject
-from .settings import AggregateTestBase, NodeObjectTestBase
+from .core import AggregateTestBase, NodeObjectTestBase
 
 # *** constants
 
@@ -22,7 +22,6 @@ AGGREGATE_SAMPLE_DATA = {
 
 # ** constant: equality_fields
 EQUALITY_FIELDS = ['id', 'name', 'description', 'icon', 'color']
-
 
 # *** classes
 
@@ -78,7 +77,6 @@ class TestCategoryAggregate(AggregateTestBase):
 
         aggregate.set_color('#EF4444')
         assert aggregate.color == '#EF4444'
-
 
 # ** class: TestCategoryNodeObject
 class TestCategoryNodeObject(NodeObjectTestBase):

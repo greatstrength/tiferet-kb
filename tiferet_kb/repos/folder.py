@@ -6,13 +6,14 @@
 from typing import List, Optional
 
 # ** app
-from tiferet_h5.repos import H5Repository
+from tiferet_h5.repos import NodeRepository
 
 from ..interfaces.folder import FolderService
 from ..mappers.folder import (
     FolderAggregate,
     FolderNodeObject,
 )
+from .core import KBNodeRepository
 
 # *** constants
 
@@ -22,7 +23,7 @@ FOLDERS_ROOT = '/kb/folders'
 # *** repos
 
 # ** repo: folder_h5_repository
-class FolderH5Repository(H5Repository, FolderService):
+class FolderH5Repository(KBNodeRepository, FolderService):
     '''
     HDF5-backed repository for knowledge base folders.
 
@@ -30,7 +31,19 @@ class FolderH5Repository(H5Repository, FolderService):
     at ``/kb/folders/<id>``.  Each group carries the folder's
     scalar metadata (name, parent_id, path, created_at) as
     attributes via ``FolderNodeObject``.
+
+    ``NodeRepository`` (through ``KBNodeRepository``) owns path resolution, ``save``, and ``exists``.
+    ``get`` stays overridden because the identifier is the group name and
+    is not an attribute.  ``list`` walks the child groups and filters by
+    ``parent_id`` in Python.  ``delete`` removes the group through
+    ``KBNodeRepository.remove_node``.
     '''
+
+    # * attribute: node_cls
+    node_cls = FolderNodeObject
+
+    # * attribute: node_path
+    node_path = f'{FOLDERS_ROOT}/{{id}}'
 
     # * init
     def __init__(self, h5_file: str, mode: str = 'a') -> None:
@@ -57,10 +70,8 @@ class FolderH5Repository(H5Repository, FolderService):
         :rtype: bool
         '''
 
-        group_path = f'{FOLDERS_ROOT}/{id}'
-
-        with self.client() as h5:
-            return h5.node_exists(group_path)
+        # Delegate to the NodeRepository mixin; a missing file is False.
+        return NodeRepository.exists(self, id=id)
 
     # * method: get
     def get(self, id: str) -> Optional[FolderAggregate]:
@@ -73,7 +84,11 @@ class FolderH5Repository(H5Repository, FolderService):
         :rtype: FolderAggregate | None
         '''
 
-        group_path = f'{FOLDERS_ROOT}/{id}'
+        # A missing file must not be created by a read.
+        if not self.file_exists():
+            return None
+
+        group_path = self.resolve_node_path(id=id)
 
         with self.client() as h5:
 
@@ -98,6 +113,10 @@ class FolderH5Repository(H5Repository, FolderService):
         '''
 
         folders: List[FolderAggregate] = []
+
+        # A missing file yields an empty list and must not be created.
+        if not self.file_exists():
+            return folders
 
         with self.client() as h5:
 
@@ -133,24 +152,10 @@ class FolderH5Repository(H5Repository, FolderService):
         :rtype: None
         '''
 
-        group_path = f'{FOLDERS_ROOT}/{folder.id}'
-
+        # Convert the aggregate to a node object and delegate to the mixin,
+        # which creates the group when absent and writes the attributes.
         node_obj = FolderNodeObject.from_model(folder)
-        attr_data = node_obj.to_attrs()
-
-        with self.client() as h5:
-
-            # Create the group if it does not exist.
-            if not h5.node_exists(group_path):
-                if not h5.node_exists('/kb'):
-                    h5.create_group('/kb', title='Knowledge Base')
-                if not h5.node_exists(FOLDERS_ROOT):
-                    h5.create_group(FOLDERS_ROOT, title='Folders')
-                h5.create_group(group_path, title=folder.name)
-
-            # Write each attribute to the group node.
-            for attr_name, attr_value in attr_data.items():
-                h5.set_node_attr(group_path, attr_name, attr_value)
+        NodeRepository.save(self, node_obj, id=folder.id)
 
     # * method: delete
     def delete(self, id: str) -> None:
@@ -163,14 +168,16 @@ class FolderH5Repository(H5Repository, FolderService):
         :rtype: None
         '''
 
-        group_path = f'{FOLDERS_ROOT}/{id}'
+        # A missing file has nothing to delete and must not be created.
+        if not self.file_exists():
+            return
+
+        group_path = self.resolve_node_path(id=id)
 
         with self.client() as h5:
 
-            if not h5.node_exists(group_path):
-                return
-
-            h5.h5file.remove_node(group_path, recursive=True)
+            # Remove the group and its contents; a missing node is a no-op.
+            self.remove_node(h5, group_path, recursive=True)
 
     # * method: move
     def move(self, id: str, new_parent_id: Optional[str] = None) -> None:
@@ -185,7 +192,11 @@ class FolderH5Repository(H5Repository, FolderService):
         :rtype: None
         '''
 
-        group_path = f'{FOLDERS_ROOT}/{id}'
+        # A missing file has nothing to move and must not be created.
+        if not self.file_exists():
+            return
+
+        group_path = self.resolve_node_path(id=id)
 
         with self.client() as h5:
 

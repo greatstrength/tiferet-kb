@@ -2,8 +2,13 @@
 
 # *** imports
 
+# ** core
+import os
+
 # ** infra
 import pytest
+from tiferet_h5.repos import NodeRepository, TableRepository
+from tiferet_h5.utils import H5Client
 
 # ** app
 from ...mappers.folder import FolderAggregate
@@ -17,13 +22,11 @@ def h5_file(tmp_path) -> str:
     '''Provide a temporary HDF5 file path.'''
     return str(tmp_path / 'test_kb.h5')
 
-
 # ** fixture: folder_repo
 @pytest.fixture
 def folder_repo(h5_file: str) -> FolderH5Repository:
     '''Provide a FolderH5Repository backed by a temporary HDF5 file.'''
     return FolderH5Repository(h5_file=h5_file)
-
 
 # ** fixture: sample_folder
 @pytest.fixture
@@ -45,14 +48,12 @@ def test_int_save_and_exists(folder_repo, sample_folder):
     folder_repo.save(sample_folder)
     assert folder_repo.exists('f-001') is True
 
-
 # ** test_int: exists_negative
 def test_int_exists_negative(folder_repo, sample_folder):
     '''Test that exists returns False for non-existent.'''
 
     folder_repo.save(sample_folder)
     assert folder_repo.exists('nonexistent') is False
-
 
 # ** test_int: get_success
 def test_int_get_success(folder_repo, sample_folder):
@@ -66,14 +67,12 @@ def test_int_get_success(folder_repo, sample_folder):
     assert result.name == 'Projects'
     assert result.path == '/Projects'
 
-
 # ** test_int: get_not_found
 def test_int_get_not_found(folder_repo, sample_folder):
     '''Test get returns None for non-existent.'''
 
     folder_repo.save(sample_folder)
     assert folder_repo.get('nonexistent') is None
-
 
 # ** test_int: list_all
 def test_int_list_all(folder_repo):
@@ -84,7 +83,6 @@ def test_int_list_all(folder_repo):
 
     result = folder_repo.list()
     assert len(result) == 2
-
 
 # ** test_int: list_by_parent
 def test_int_list_by_parent(folder_repo):
@@ -98,13 +96,11 @@ def test_int_list_by_parent(folder_repo):
     assert len(result) == 1
     assert result[0].id == 'f-002'
 
-
 # ** test_int: list_empty
 def test_int_list_empty(folder_repo):
     '''Test listing when no folders exist.'''
 
     assert folder_repo.list() == []
-
 
 # ** test_int: save_update
 def test_int_save_update(folder_repo, sample_folder):
@@ -117,7 +113,6 @@ def test_int_save_update(folder_repo, sample_folder):
     result = folder_repo.get('f-001')
     assert result.name == 'Engineering'
 
-
 # ** test_int: delete_success
 def test_int_delete_success(folder_repo, sample_folder):
     '''Test deleting a folder.'''
@@ -127,14 +122,12 @@ def test_int_delete_success(folder_repo, sample_folder):
 
     assert folder_repo.exists('f-001') is False
 
-
 # ** test_int: delete_idempotent
 def test_int_delete_idempotent(folder_repo, sample_folder):
     '''Test that deleting a non-existent folder is idempotent.'''
 
     folder_repo.save(sample_folder)
     folder_repo.delete('nonexistent')  # Should not raise
-
 
 # ** test_int: move
 def test_int_move(folder_repo, sample_folder):
@@ -145,7 +138,6 @@ def test_int_move(folder_repo, sample_folder):
 
     result = folder_repo.get('f-001')
     assert result.parent_id == 'f-002'
-
 
 # ** test_int: move_to_root
 def test_int_move_to_root(folder_repo):
@@ -159,3 +151,55 @@ def test_int_move_to_root(folder_repo):
     result = folder_repo.get('f-002')
     # parent_id should be empty string (stored as '') which maps back via attrs.
     assert result.parent_id in (None, '')
+
+# *** tests: RFP-001 storage alignment
+
+# ** test_int: composes_node_repository_not_table_repository
+def test_int_composes_node_repository_not_table_repository():
+    '''The folder repository composes NodeRepository and not TableRepository.'''
+
+    assert issubclass(FolderH5Repository, NodeRepository)
+    assert not issubclass(FolderH5Repository, TableRepository)
+
+# ** test_int: get_injects_group_name_as_id
+def test_int_get_injects_group_name_as_id(folder_repo, h5_file, sample_folder):
+    '''get returns the id that was the group name, and id is not stored as an attribute.'''
+
+    folder_repo.save(sample_folder)
+
+    assert folder_repo.get('f-001').id == 'f-001'
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert 'id' not in h5.get_node_attrs('/kb/folders/f-001')
+
+# ** test_int: list_none_and_root
+def test_int_list_none_and_root(folder_repo):
+    '''list(None) returns every folder and list('__root__') returns roots only.'''
+
+    folder_repo.save(FolderAggregate(id='f-root', name='Root', path='/Root'))
+    folder_repo.save(FolderAggregate(id='f-child', name='Child', path='/Root/Child', parent_id='f-root'))
+
+    assert {f.id for f in folder_repo.list(None)} == {'f-root', 'f-child'}
+    assert {f.id for f in folder_repo.list('__root__')} == {'f-root'}
+    assert {f.id for f in folder_repo.list('f-root')} == {'f-child'}
+
+# ** test_int: move_keeps_group
+def test_int_move_keeps_group(folder_repo, sample_folder):
+    '''move rewrites parent_id on the existing group and does not delete the node.'''
+
+    folder_repo.save(sample_folder)
+    folder_repo.move('f-001', 'f-002')
+
+    assert folder_repo.exists('f-001') is True
+    assert folder_repo.get('f-001').parent_id == 'f-002'
+
+# ** test_int: missing_file_reads_are_empty_and_not_created
+def test_int_missing_file_reads_are_empty_and_not_created(folder_repo, h5_file):
+    '''Reads, delete, and move on a missing file do not create the file.'''
+
+    assert folder_repo.get('nope') is None
+    assert folder_repo.exists('nope') is False
+    assert folder_repo.list() == []
+    folder_repo.delete('nope')
+    folder_repo.move('nope', 'x')
+
+    assert not os.path.exists(h5_file)

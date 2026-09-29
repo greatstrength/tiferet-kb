@@ -3,7 +3,7 @@
 # *** imports
 
 # ** app
-from .settings import AggregateTestBase
+from .core import AggregateTestBase
 
 # *** hooks
 

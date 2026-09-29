@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 # ** app
+from tiferet.assets import TiferetError
 from tiferet_h5.repos import H5Repository
 
 from ..interfaces.document import DocumentService
@@ -20,6 +21,7 @@ from ..mappers.document import (
     DocumentSectionNodeObject,
 )
 from ..mappers.segment import HybridSegmentTableObject
+from .core import KBNodeRepository, KBTableRepository
 
 # *** constants
 
@@ -43,16 +45,34 @@ class DocumentH5Repository(H5Repository, DocumentService):
     HDF5-backed repository for knowledge base documents.
 
     Documents are stored as rows in ``/kb/documents/documents`` via
-    ``DocumentTableObject``.  Sections are stored as rows in
-    ``/kb/documents/document_sections`` via ``DocumentSectionTableObject``.
-    The ``get()`` method joins header and section rows to return a
-    fully-populated aggregate.
+    ``DocumentTableObject``.  Each section is a group node at
+    ``/kb/documents/<document_id>/sections/<section_id>`` whose attributes
+    come from ``DocumentSectionNodeObject`` and which holds a nested
+    ``segments`` table (``HybridSegmentTableObject``).  Embeddings are two
+    parallel arrays, ``section_embeddings`` and ``section_embedding_ids``.
+    The ``get()`` method joins the header row and section groups to return
+    a fully-populated aggregate.
+
+    This class stays on ``H5Repository`` and does not inherit
+    ``TableRepository`` or ``NodeRepository``: the header is a table, the
+    section is a node plus a nested table, and the vectors are arrays.
+    Group and array removal goes through ``KBNodeRepository.remove_node``,
+    and stamped table creation through ``KBTableRepository.ensure_table``;
+    each is held as a collaborator.
+    The header and each ``segments`` table are stamped with
+    ``schema_version`` on first create; ``verify`` is the opt-in check.
     '''
+
+    # * attribute: node_repo
+    node_repo: KBNodeRepository
+
+    # * attribute: table_repo
+    table_repo: KBTableRepository
 
     # * init
     def __init__(self, h5_file: str, mode: str = 'a') -> None:
         '''
-        Initialize the document H5 repository.
+        Initialize the document H5 repository and its node and table collaborators.
 
         :param h5_file: Path to the HDF5 file.
         :type h5_file: str
@@ -62,6 +82,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
         # Initialize the parent H5Repository.
         super().__init__(h5_file=h5_file, mode=mode)
+
+        # Hold one collaborator per storage shape, sharing the same file.
+        self.node_repo = KBNodeRepository(h5_file=h5_file, mode=mode)
+        self.table_repo = KBTableRepository(h5_file=h5_file, mode=mode)
 
     # * method: exists
     def exists(self, id: str) -> bool:
@@ -186,10 +210,11 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Ensure the parent group exists.
             self._ensure_group(h5)
 
-            # Get or create the documents table.
-            t = h5.get_or_create_table(
+            # Get or create the documents table, stamping the schema on create.
+            t = self.table_repo.ensure_table(
+                h5,
                 DOCUMENTS_TABLE,
-                DocumentTableObject.get_description(),
+                DocumentTableObject,
                 title='Documents',
             )
 
@@ -200,6 +225,41 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Append the new row.
             table_obj.to_row(t)
             t.flush()
+
+    # * method: verify
+    def verify(self, section_path: Optional[str] = None) -> None:
+        '''
+        Assert that the live header table, and optionally one section's
+        segments table, match their declared schemas.
+
+        This check is opt-in.  ``get``, ``list``, ``save``, and opening the
+        file do not call it.  A missing file or table is not verified, and a
+        table with no ``schema_version`` attribute is not a mismatch.  Column
+        drift raises ``H5_SCHEMA_MISMATCH``.
+
+        :param section_path: Optional section group path,
+            ``/kb/documents/<document_id>/sections/<section_id>``, whose
+            ``segments`` table is verified as well.
+        :type section_path: str | None
+        :return: None
+        :rtype: None
+        '''
+
+        # A missing file has nothing to verify and must not be created.
+        if not self.file_exists():
+            return
+
+        with self.client() as h5:
+
+            # Verify the header table when it exists.
+            if h5.node_exists(DOCUMENTS_TABLE):
+                h5.assert_schema(DOCUMENTS_TABLE, DocumentTableObject)
+
+            # Verify the section's segments table when a path was given and it exists.
+            if section_path:
+                segments_path = f'{section_path}/segments'
+                if h5.node_exists(segments_path):
+                    h5.assert_schema(segments_path, HybridSegmentTableObject)
 
     # * method: _ensure_group
     def _ensure_group(self, h5) -> None:
@@ -245,9 +305,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 h5.remove_rows(DOCUMENTS_TABLE, f'(id == b"{id}")')
 
             # Cascade: remove all section groups for this document.
-            doc_group = f'{DOCUMENTS_GROUP}/{id}'
-            if h5.node_exists(doc_group):
-                h5.h5file.remove_node(doc_group, recursive=True)
+            self.node_repo.remove_node(h5, f'{DOCUMENTS_GROUP}/{id}', recursive=True)
 
             # Cascade: remove embeddings for all deleted sections.
             if section_ids:
@@ -273,7 +331,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         Save or update a document section (upsert).
 
         Creates a section group node with metadata attributes and a flat
-        segments table containing denormalized paragraph data.
+        segments table containing denormalized paragraph data.  When the
+        group already exists it is kept: attributes are written onto it and
+        only the ``segments`` table is replaced, so any other child of the
+        section group survives a passage rewrite.
 
         :param section: The document section aggregate to save.
         :type section: DocumentSectionAggregate
@@ -290,23 +351,22 @@ class DocumentH5Repository(H5Repository, DocumentService):
             self._ensure_path(h5, sections_group)
             section_group = f'{sections_group}/{section.id}'
 
-            # If section group already exists, remove it (upsert).
-            if h5.node_exists(section_group):
-                h5.h5file.remove_node(section_group, recursive=True)
+            # Create the section group only when it is absent (upsert keeps it).
+            if not h5.node_exists(section_group):
+                h5.create_group(section_group, title=section.title)
 
-            # Create the section group.
-            h5.create_group(section_group, title=section.title)
-
-            # Write section attributes.
+            # Write section attributes onto the group.
             node_obj = DocumentSectionNodeObject.from_model(section)
             for attr_name, attr_value in node_obj.to_attrs().items():
                 h5.set_node_attr(section_group, attr_name, attr_value)
 
-            # Create the flat segments table.
+            # Replace the segments table only, never the section group.
             segments_path = f'{section_group}/segments'
-            t = h5.create_table(
+            self.node_repo.remove_node(h5, segments_path)
+            t = self.table_repo.ensure_table(
+                h5,
                 segments_path,
-                HybridSegmentTableObject.get_description(),
+                HybridSegmentTableObject,
                 title='Segments',
             )
 
@@ -346,8 +406,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Find and remove the section group.
             if document_id:
                 section_group = f'{DOCUMENTS_GROUP}/{document_id}/sections/{section_id}'
-                if h5.node_exists(section_group):
-                    h5.h5file.remove_node(section_group, recursive=True)
+                self.node_repo.remove_node(h5, section_group, recursive=True)
             else:
                 # Search all document groups for the section.
                 self._find_and_remove_section(h5, section_id)
@@ -426,9 +485,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 # Validate dimension consistency.
                 if existing_embs.shape[0] > 0 and existing_embs.shape[1] != new_vec.shape[0]:
                     from ..assets import constants as const
-                    from tiferet.events import RaiseError
-                    RaiseError.execute(
-                        error_code=const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
+                    TiferetError.raise_error(
+                        const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
                         expected=int(existing_embs.shape[1]),
                         actual=int(new_vec.shape[0]),
                     )
@@ -444,8 +502,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
                     new_ids = np.append(existing_ids, np.bytes_(section_id))
 
                 # Remove old arrays and recreate with updated data.
-                h5.h5file.remove_node(EMBEDDINGS_ARRAY)
-                h5.h5file.remove_node(EMBEDDING_IDS_ARRAY)
+                self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+                self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
             else:
                 # First embedding: create new arrays.
@@ -607,8 +665,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         mask = np.array([sid != section_id for sid in id_list])
 
         # Remove old arrays.
-        h5.h5file.remove_node(EMBEDDINGS_ARRAY)
-        h5.h5file.remove_node(EMBEDDING_IDS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
         # Recreate only if there are remaining embeddings.
         if mask.any():
@@ -649,8 +707,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
             return
 
         # Remove old arrays.
-        h5.h5file.remove_node(EMBEDDINGS_ARRAY)
-        h5.h5file.remove_node(EMBEDDING_IDS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
         # Recreate only if there are remaining embeddings.
         if mask.any():
@@ -771,7 +829,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
         for doc_child in docs_root._v_children.values():
             section_path = f'{doc_child._v_pathname}/sections/{section_id}'
             if h5.node_exists(section_path):
-                h5.h5file.remove_node(section_path, recursive=True)
+                self.node_repo.remove_node(h5, section_path, recursive=True)
                 return
 
     # * method: _get_filtered_section_ids
