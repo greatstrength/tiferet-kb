@@ -29,6 +29,9 @@ attrs:
   update_document_event:
     module_path: tiferet_kb.events.document
     class_name: UpdateDocument
+  set_document_visibility_event:
+    module_path: tiferet_kb.events.document
+    class_name: SetDocumentVisibility
   remove_document_event:
     module_path: tiferet_kb.events.document
     class_name: RemoveDocument
@@ -80,6 +83,9 @@ attrs:
   get_folder_event:
     module_path: tiferet_kb.events.folder
     class_name: GetFolder
+  set_folder_visibility_event:
+    module_path: tiferet_kb.events.folder
+    class_name: SetFolderVisibility
   list_folder_contents_event:
     module_path: tiferet_kb.events.folder
     class_name: ListFolderContents
