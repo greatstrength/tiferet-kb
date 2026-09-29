@@ -46,7 +46,6 @@ SEC_SAMPLE_DATA = {
 # ** constant: sec_equality_fields
 SEC_EQUALITY_FIELDS = ['id', 'template_id', 'title', 'content_type', 'default_content', 'position']
 
-
 # *** classes
 
 # ** class: TestTemplateAggregate
@@ -88,7 +87,6 @@ class TestTemplateAggregate(AggregateTestBase):
         aggregate.set_category('design-docs')
         assert aggregate.category_id == 'design-docs'
 
-
 # ** class: TestTemplateSectionAggregate
 class TestTemplateSectionAggregate(AggregateTestBase):
     '''Tests for TemplateSectionAggregate.'''
@@ -125,7 +123,6 @@ class TestTemplateSectionAggregate(AggregateTestBase):
         aggregate.set_content_type('code')
         assert aggregate.content_type == 'code'
 
-
 # *** standalone TableObject tests
 
 # ** fixture: tmpl_h5_table
@@ -138,7 +135,6 @@ def tmpl_h5_table(tmp_path: Path):
     yield table
     h5file.close()
 
-
 # ** fixture: tmpl_sec_h5_table
 @pytest.fixture
 def tmpl_sec_h5_table(tmp_path: Path):
@@ -148,7 +144,6 @@ def tmpl_sec_h5_table(tmp_path: Path):
     table = h5file.create_table('/', 'sections', TemplateSectionTableObject.get_description())
     yield table
     h5file.close()
-
 
 # ** test: template_table_object_round_trip
 def test_template_table_object_round_trip(tmpl_h5_table):
@@ -168,7 +163,6 @@ def test_template_table_object_round_trip(tmpl_h5_table):
     assert restored.id == 'tmpl-001'
     assert restored.name == 'Meeting Notes'
 
-
 # ** test: template_table_object_map_converts_empty_to_none
 def test_template_table_object_map_converts_empty_to_none():
     '''Test that map() converts empty string optionals to None.'''
@@ -180,7 +174,6 @@ def test_template_table_object_map_converts_empty_to_none():
     agg = obj.map()
     assert agg.description is None
     assert agg.category_id is None
-
 
 # ** test: template_section_table_object_round_trip
 def test_template_section_table_object_round_trip(tmpl_sec_h5_table):

@@ -68,7 +68,6 @@ class MapperAssertions:
                 f"  actual:   {actual!r}"
             )
 
-
 # ** class: AggregateTestBase
 class AggregateTestBase(MapperAssertions):
     '''
@@ -149,7 +148,6 @@ class AggregateTestBase(MapperAssertions):
         else:
             aggregate.set_attribute(attr, value)
             assert getattr(aggregate, attr) == value
-
 
 # ** class: NodeObjectTestBase
 class NodeObjectTestBase(MapperAssertions):

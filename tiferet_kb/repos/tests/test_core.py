@@ -44,7 +44,6 @@ def test_every_repo_extends_core():
     ):
         assert issubclass(repo_cls, KBH5Repository)
 
-
 # ** test: remove_node_group_recursive
 def test_remove_node_group_recursive(core_repo):
     '''A group and its children are removed with recursive=True.'''
@@ -55,7 +54,6 @@ def test_remove_node_group_recursive(core_repo):
         assert not h5.node_exists('/kb/a')
         assert h5.node_exists('/kb')
 
-
 # ** test: remove_node_array
 def test_remove_node_array(core_repo):
     '''An array is removed with the default recursive=False.'''
@@ -65,7 +63,6 @@ def test_remove_node_array(core_repo):
         core_repo.remove_node(h5, '/kb/arr')
         assert not h5.node_exists('/kb/arr')
 
-
 # ** test: remove_node_missing
 def test_remove_node_missing(core_repo):
     '''A missing node is not an error.'''
@@ -73,7 +70,6 @@ def test_remove_node_missing(core_repo):
     with core_repo.client() as h5:
         core_repo.remove_node(h5, '/kb/nothing', recursive=True)
         core_repo.remove_node(h5, '/kb/nothing')
-
 
 # ** test: ensure_table_stamps_on_create_only
 def test_ensure_table_stamps_on_create_only(core_repo):

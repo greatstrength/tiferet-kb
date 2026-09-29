@@ -24,7 +24,6 @@ def h5_file(tmp_path) -> str:
     '''
     return str(tmp_path / 'test_kb.h5')
 
-
 # ** fixture: category_repo
 @pytest.fixture
 def category_repo(h5_file: str) -> CategoryH5Repository:
@@ -32,7 +31,6 @@ def category_repo(h5_file: str) -> CategoryH5Repository:
     Provide a CategoryH5Repository backed by a temporary HDF5 file.
     '''
     return CategoryH5Repository(h5_file=h5_file)
-
 
 # ** fixture: sample_category
 @pytest.fixture
@@ -62,7 +60,6 @@ def test_int_save_and_exists(category_repo: CategoryH5Repository, sample_categor
     # Assert the category now exists.
     assert category_repo.exists('meeting-notes') is True
 
-
 # ** test_int: exists_negative
 def test_int_exists_negative(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
     '''
@@ -74,7 +71,6 @@ def test_int_exists_negative(category_repo: CategoryH5Repository, sample_categor
 
     # Assert a different category does not exist.
     assert category_repo.exists('nonexistent') is False
-
 
 # ** test_int: get_success
 def test_int_get_success(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
@@ -94,7 +90,6 @@ def test_int_get_success(category_repo: CategoryH5Repository, sample_category: C
     assert result.icon == '📝'
     assert result.color == '#3B82F6'
 
-
 # ** test_int: get_not_found
 def test_int_get_not_found(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
     '''
@@ -106,7 +101,6 @@ def test_int_get_not_found(category_repo: CategoryH5Repository, sample_category:
 
     # Assert None is returned for a missing category.
     assert category_repo.get('nonexistent') is None
-
 
 # ** test_int: list_categories
 def test_int_list_categories(category_repo: CategoryH5Repository):
@@ -127,7 +121,6 @@ def test_int_list_categories(category_repo: CategoryH5Repository):
     assert 'meeting-notes' in ids
     assert 'design-docs' in ids
 
-
 # ** test_int: list_empty
 def test_int_list_empty(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
     '''
@@ -141,7 +134,6 @@ def test_int_list_empty(category_repo: CategoryH5Repository, sample_category: Ca
     # List should return an empty list.
     result = category_repo.list()
     assert result == []
-
 
 # ** test_int: save_update
 def test_int_save_update(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
@@ -160,7 +152,6 @@ def test_int_save_update(category_repo: CategoryH5Repository, sample_category: C
     result = category_repo.get('meeting-notes')
     assert result.name == 'Team Meeting Notes'
 
-
 # ** test_int: delete_success
 def test_int_delete_success(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
     '''
@@ -174,7 +165,6 @@ def test_int_delete_success(category_repo: CategoryH5Repository, sample_category
     # Assert the category no longer exists.
     assert category_repo.exists('meeting-notes') is False
 
-
 # ** test_int: delete_idempotent
 def test_int_delete_idempotent(category_repo: CategoryH5Repository, sample_category: CategoryAggregate):
     '''
@@ -187,7 +177,6 @@ def test_int_delete_idempotent(category_repo: CategoryH5Repository, sample_categ
     # Deleting a non-existent category should not raise.
     category_repo.delete('nonexistent')
 
-
 # *** tests: RFP-001 storage alignment
 
 # ** test_int: composes_node_repository_not_table_repository
@@ -196,7 +185,6 @@ def test_int_composes_node_repository_not_table_repository():
 
     assert issubclass(CategoryH5Repository, NodeRepository)
     assert not issubclass(CategoryH5Repository, TableRepository)
-
 
 # ** test_int: get_injects_group_name_as_id
 def test_int_get_injects_group_name_as_id(category_repo: CategoryH5Repository, h5_file: str, sample_category: CategoryAggregate):
@@ -210,7 +198,6 @@ def test_int_get_injects_group_name_as_id(category_repo: CategoryH5Repository, h
     with H5Client(path=h5_file, mode='r') as h5:
         assert 'id' not in h5.get_node_attrs('/kb/categories/meeting-notes')
 
-
 # ** test_int: missing_file_reads_are_empty_and_not_created
 def test_int_missing_file_reads_are_empty_and_not_created(category_repo: CategoryH5Repository, h5_file: str):
     '''Reads and delete on a missing file return None/False/[] and do not create the file.'''
@@ -221,7 +208,6 @@ def test_int_missing_file_reads_are_empty_and_not_created(category_repo: Categor
     category_repo.delete('nope')
 
     assert not os.path.exists(h5_file)
-
 
 # ** test_int: delete_removes_group_and_is_idempotent
 def test_int_delete_removes_group_and_is_idempotent(category_repo: CategoryH5Repository, h5_file: str, sample_category: CategoryAggregate):

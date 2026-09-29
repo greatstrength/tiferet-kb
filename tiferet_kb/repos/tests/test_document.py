@@ -37,13 +37,11 @@ def h5_file(tmp_path) -> str:
     '''Provide a temporary HDF5 file path.'''
     return str(tmp_path / 'test_kb.h5')
 
-
 # ** fixture: doc_repo
 @pytest.fixture
 def doc_repo(h5_file: str) -> DocumentH5Repository:
     '''Provide a DocumentH5Repository backed by a temporary HDF5 file.'''
     return DocumentH5Repository(h5_file=h5_file)
-
 
 # ** fixture: sample_document
 @pytest.fixture
@@ -57,7 +55,6 @@ def sample_document() -> DocumentAggregate:
         created_at='2026-01-01T00:00:00+00:00',
         updated_at='2026-01-01T00:00:00+00:00',
     )
-
 
 # ** fixture: sample_section
 @pytest.fixture
@@ -82,14 +79,12 @@ def test_int_save_and_exists(doc_repo, sample_document):
     doc_repo.save(sample_document)
     assert doc_repo.exists('doc-001') is True
 
-
 # ** test_int: exists_negative
 def test_int_exists_negative(doc_repo, sample_document):
     '''Test that exists returns False for a non-existent document.'''
 
     doc_repo.save(sample_document)
     assert doc_repo.exists('nonexistent') is False
-
 
 # ** test_int: get_success
 def test_int_get_success(doc_repo, sample_document):
@@ -104,7 +99,6 @@ def test_int_get_success(doc_repo, sample_document):
     assert result.category_id == 'meeting-notes'
     assert result.status == 'draft'
 
-
 # ** test_int: get_with_sections
 def test_int_get_with_sections(doc_repo, sample_document, sample_section):
     '''Test that get() returns document with sections populated.'''
@@ -117,14 +111,12 @@ def test_int_get_with_sections(doc_repo, sample_document, sample_section):
     assert len(result.sections) == 1
     assert result.sections[0].title == 'Introduction'
 
-
 # ** test_int: get_not_found
 def test_int_get_not_found(doc_repo, sample_document):
     '''Test that get returns None for a non-existent document.'''
 
     doc_repo.save(sample_document)
     assert doc_repo.get('nonexistent') is None
-
 
 # ** test_int: list_all
 def test_int_list_all(doc_repo):
@@ -135,7 +127,6 @@ def test_int_list_all(doc_repo):
 
     result = doc_repo.list()
     assert len(result) == 2
-
 
 # ** test_int: list_by_status
 def test_int_list_by_status(doc_repo):
@@ -148,14 +139,12 @@ def test_int_list_by_status(doc_repo):
     assert len(result) == 1
     assert result[0].id == 'doc-001'
 
-
 # ** test_int: list_empty
 def test_int_list_empty(doc_repo):
     '''Test listing when no documents exist.'''
 
     result = doc_repo.list()
     assert result == []
-
 
 # ** test_int: list_include_sections
 def test_int_list_include_sections(doc_repo):
@@ -191,7 +180,6 @@ def test_int_list_include_sections(doc_repo):
     assert len(docs_by_id['doc-002'].sections) == 1
     assert docs_by_id['doc-002'].sections[0].title == 'Summary'
 
-
 # ** test_int: list_default_no_sections
 def test_int_list_default_no_sections(doc_repo):
     '''Test that list() without include_sections returns documents without sections.'''
@@ -206,7 +194,6 @@ def test_int_list_default_no_sections(doc_repo):
     result = doc_repo.list()
     assert len(result) == 1
     assert result[0].sections == []
-
 
 # ** test_int: save_upsert
 def test_int_save_upsert(doc_repo, sample_document):
@@ -223,7 +210,6 @@ def test_int_save_upsert(doc_repo, sample_document):
     all_docs = doc_repo.list()
     assert len(all_docs) == 1
 
-
 # ** test_int: delete_cascades_sections
 def test_int_delete_cascades_sections(doc_repo, sample_document, sample_section):
     '''Test that deleting a document cascades to its sections.'''
@@ -236,14 +222,12 @@ def test_int_delete_cascades_sections(doc_repo, sample_document, sample_section)
     assert doc_repo.exists('doc-001') is False
     assert doc_repo.get_sections('doc-001') == []
 
-
 # ** test_int: delete_idempotent
 def test_int_delete_idempotent(doc_repo, sample_document):
     '''Test that deleting a non-existent document is idempotent.'''
 
     doc_repo.save(sample_document)
     doc_repo.delete('nonexistent')  # Should not raise.
-
 
 # ** test_int: save_section_and_get_sections
 def test_int_save_section_and_get_sections(doc_repo, sample_document):
@@ -267,7 +251,6 @@ def test_int_save_section_and_get_sections(doc_repo, sample_document):
     assert sections[0].position == 0
     assert sections[1].position == 1
 
-
 # ** test_int: save_section_upsert
 def test_int_save_section_upsert(doc_repo, sample_document, sample_section):
     '''Test that save_section upserts an existing section.'''
@@ -282,7 +265,6 @@ def test_int_save_section_upsert(doc_repo, sample_document, sample_section):
     assert len(sections) == 1
     assert sections[0].title == 'Updated Title'
 
-
 # ** test_int: delete_section
 def test_int_delete_section(doc_repo, sample_document, sample_section):
     '''Test deleting a single section.'''
@@ -292,7 +274,6 @@ def test_int_delete_section(doc_repo, sample_document, sample_section):
 
     doc_repo.delete_section('sec-001')
     assert doc_repo.get_sections('doc-001') == []
-
 
 # ** test_int: reorder_sections
 def test_int_reorder_sections(doc_repo, sample_document):
@@ -321,7 +302,6 @@ def test_int_reorder_sections(doc_repo, sample_document):
     assert sections[1].id == 'sec-001'
     assert sections[1].position == 1
 
-
 # ** test_int: embed_section_and_get_embedding
 def test_int_embed_section_and_get_embedding(doc_repo, sample_document, sample_section):
     '''Test embedding storage and retrieval.'''
@@ -337,13 +317,11 @@ def test_int_embed_section_and_get_embedding(doc_repo, sample_document, sample_s
     assert len(result) == 4
     assert abs(result[0] - 0.1) < 1e-5
 
-
 # ** test_int: get_embedding_not_found
 def test_int_get_embedding_not_found(doc_repo):
     '''Test that get_embedding returns None for non-embedded sections.'''
 
     assert doc_repo.get_embedding('nonexistent') is None
-
 
 # ** test_int: embed_section_replace
 def test_int_embed_section_replace(doc_repo, sample_document, sample_section):
@@ -357,7 +335,6 @@ def test_int_embed_section_replace(doc_repo, sample_document, sample_section):
 
     result = doc_repo.get_embedding('sec-001')
     assert abs(result[0] - 0.9) < 1e-5
-
 
 # ** test_int: embed_multiple_sections
 def test_int_embed_multiple_sections(doc_repo, sample_document):
@@ -381,7 +358,6 @@ def test_int_embed_multiple_sections(doc_repo, sample_document):
 
     assert doc_repo.get_embedding('sec-001') is not None
     assert doc_repo.get_embedding('sec-002') is not None
-
 
 # ** test_int: search_similar
 def test_int_search_similar(doc_repo, sample_document):
@@ -409,14 +385,12 @@ def test_int_search_similar(doc_repo, sample_document):
     assert results[0]['section_id'] == 'sec-001'
     assert results[0]['score'] > results[1]['score']
 
-
 # ** test_int: search_similar_empty
 def test_int_search_similar_empty(doc_repo):
     '''Test search when no embeddings exist.'''
 
     results = doc_repo.search_similar([1.0, 0.0, 0.0])
     assert results == []
-
 
 # ** test_int: remove_embedding
 def test_int_remove_embedding(doc_repo, sample_document, sample_section):
@@ -431,7 +405,6 @@ def test_int_remove_embedding(doc_repo, sample_document, sample_section):
     doc_repo.remove_embedding('sec-001')
     assert doc_repo.get_embedding('sec-001') is None
 
-
 # ** test_int: delete_section_cascades_embedding
 def test_int_delete_section_cascades_embedding(doc_repo, sample_document, sample_section):
     '''Test that deleting a section also removes its embedding.'''
@@ -442,7 +415,6 @@ def test_int_delete_section_cascades_embedding(doc_repo, sample_document, sample
 
     doc_repo.delete_section('sec-001')
     assert doc_repo.get_embedding('sec-001') is None
-
 
 # ** test_int: delete_document_cascades_embeddings
 def test_int_delete_document_cascades_embeddings(doc_repo, sample_document):
@@ -467,7 +439,6 @@ def test_int_delete_document_cascades_embeddings(doc_repo, sample_document):
     assert doc_repo.get_embedding('sec-001') is None
     assert doc_repo.get_embedding('sec-002') is None
 
-
 # *** tests: RFP-001 storage alignment
 
 # ** test_int: inherits_h5_repository_only
@@ -476,7 +447,6 @@ def test_int_inherits_h5_repository_only():
 
     assert not issubclass(DocumentH5Repository, TableRepository)
     assert not issubclass(DocumentH5Repository, NodeRepository)
-
 
 # ** test_int: header_table_is_stamped
 def test_int_header_table_is_stamped(doc_repo, h5_file, sample_document):
@@ -493,7 +463,6 @@ def test_int_header_table_is_stamped(doc_repo, h5_file, sample_document):
     with H5Client(path=h5_file, mode='r') as h5:
         assert h5.get_node_attr(DOCUMENTS_TABLE, 'schema_version') == 'sentinel'
 
-
 # ** test_int: segments_table_is_stamped_and_no_document_sections
 def test_int_segments_table_is_stamped_and_no_document_sections(doc_repo, h5_file, sample_document, sample_section):
     '''A new section's segments table is stamped; no flat sections table or group stamp exists.'''
@@ -507,7 +476,6 @@ def test_int_segments_table_is_stamped_and_no_document_sections(doc_repo, h5_fil
         assert not h5.node_exists('/kb/documents/document_sections')
         assert 'schema_version' not in h5.get_node_attrs(section_path)
         assert 'schema_version' not in h5.get_node_attrs('/kb/documents/doc-001')
-
 
 # ** test_int: save_section_keeps_group_and_replaces_segments
 def test_int_save_section_keeps_group_and_replaces_segments(doc_repo, h5_file, sample_document, sample_section):
@@ -536,7 +504,6 @@ def test_int_save_section_keeps_group_and_replaces_segments(doc_repo, h5_file, s
     # Exactly one section remains.
     assert len(doc_repo.get_sections('doc-001')) == 1
 
-
 # ** test_int: verify_passes_on_fresh_tables
 def test_int_verify_passes_on_fresh_tables(doc_repo, sample_document, sample_section):
     '''verify does not raise on tables just created by this code.'''
@@ -547,7 +514,6 @@ def test_int_verify_passes_on_fresh_tables(doc_repo, sample_document, sample_sec
     doc_repo.verify()
     doc_repo.verify(section_path='/kb/documents/doc-001/sections/sec-001')
 
-
 # ** test_int: verify_missing_file_or_table_is_noop
 def test_int_verify_missing_file_or_table_is_noop(doc_repo, h5_file, sample_document):
     '''verify on a missing file, a missing table, or a missing section does nothing and creates nothing.'''
@@ -557,7 +523,6 @@ def test_int_verify_missing_file_or_table_is_noop(doc_repo, h5_file, sample_docu
 
     doc_repo.save(sample_document)
     doc_repo.verify(section_path='/kb/documents/doc-001/sections/none')
-
 
 # ** test_int: verify_raises_on_column_drift
 def test_int_verify_raises_on_column_drift(doc_repo, h5_file):
@@ -575,7 +540,6 @@ def test_int_verify_raises_on_column_drift(doc_repo, h5_file):
     with pytest.raises(ServiceError) as exc_info:
         doc_repo.verify()
     assert exc_info.value.error_code == 'H5_SCHEMA_MISMATCH'
-
 
 # ** test_int: unstamped_file_still_opens
 def test_int_unstamped_file_still_opens(doc_repo, h5_file, sample_document):
@@ -596,7 +560,6 @@ def test_int_unstamped_file_still_opens(doc_repo, h5_file, sample_document):
     with H5Client(path=h5_file, mode='r') as h5:
         assert 'schema_version' not in h5.get_node_attrs(DOCUMENTS_TABLE)
 
-
 # ** test_int: embed_dimension_mismatch
 def test_int_embed_dimension_mismatch(doc_repo, sample_document, sample_section):
     '''A vector of a different length raises the KB dimension mismatch as a TiferetError.'''
@@ -612,7 +575,6 @@ def test_int_embed_dimension_mismatch(doc_repo, sample_document, sample_section)
     # The stored embedding is untouched.
     assert doc_repo.get_embedding('sec-001') is not None
 
-
 # ** test_int: search_similar_signature
 def test_int_search_similar_signature():
     '''search_similar keeps folder_id and category_id and has no document_id.'''
@@ -621,7 +583,6 @@ def test_int_search_similar_signature():
     assert 'folder_id' in params
     assert 'category_id' in params
     assert 'document_id' not in params
-
 
 # ** test_int: delete_section_scan_preserves_header_and_arrays
 def test_int_delete_section_scan_preserves_header_and_arrays(doc_repo, h5_file, sample_document, sample_section):
@@ -643,7 +604,6 @@ def test_int_delete_section_scan_preserves_header_and_arrays(doc_repo, h5_file, 
     assert doc_repo.exists('doc-001') is True
     assert doc_repo.get_embedding('sec-001') is None
     assert doc_repo.get_embedding('sec-keep') is not None
-
 
 # ** test_int: delete_document_missing_is_noop
 def test_int_delete_document_missing_is_noop(doc_repo, sample_document):

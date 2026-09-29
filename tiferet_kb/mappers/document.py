@@ -100,7 +100,6 @@ class DocumentSectionAggregate(DocumentSection, Aggregate):
         self.content_type = content_type
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
-
 # ** mapper: document_aggregate
 class DocumentAggregate(Document, Aggregate):
     '''
@@ -172,7 +171,6 @@ class DocumentAggregate(Document, Aggregate):
         # Update the category and timestamp.
         self.category_id = category_id
         self.updated_at = datetime.now(timezone.utc).isoformat()
-
 
 # ** mapper: document_table_object
 class DocumentTableObject(TableObject):
@@ -264,7 +262,6 @@ class DocumentTableObject(TableObject):
 
         # Construct and return the table object.
         return cls.model_validate(data)
-
 
 # ** mapper: document_section_node_object
 class DocumentSectionNodeObject(NodeObject):

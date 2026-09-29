@@ -51,7 +51,6 @@ SECTION_SAMPLE_DATA = {
 # ** constant: section_equality_fields
 SECTION_EQUALITY_FIELDS = ['id', 'document_id', 'title', 'heading_level', 'content_type', 'position']
 
-
 # *** classes
 
 # ** class: TestDocumentAggregate
@@ -100,7 +99,6 @@ class TestDocumentAggregate(AggregateTestBase):
         aggregate.set_category('design-docs')
         assert aggregate.category_id == 'design-docs'
 
-
 # ** class: TestDocumentSectionAggregate
 class TestDocumentSectionAggregate(AggregateTestBase):
     '''Tests for DocumentSectionAggregate.'''
@@ -141,7 +139,6 @@ class TestDocumentSectionAggregate(AggregateTestBase):
         aggregate.set_content_type('code')
         assert aggregate.content_type == 'code'
 
-
 # *** standalone TableObject tests
 
 # ** fixture: doc_h5_table
@@ -153,7 +150,6 @@ def doc_h5_table(tmp_path: Path):
     table = h5file.create_table('/', 'documents', DocumentTableObject.get_description())
     yield table
     h5file.close()
-
 
 # ** test: document_table_object_round_trip
 def test_document_table_object_round_trip(doc_h5_table):
@@ -173,7 +169,6 @@ def test_document_table_object_round_trip(doc_h5_table):
     assert restored.id == 'doc-001'
     assert restored.title == 'Test Doc'
 
-
 # ** test: document_table_object_map_converts_empty_to_none
 def test_document_table_object_map_converts_empty_to_none():
     '''Test that map() converts empty string FKs to None.'''
@@ -187,7 +182,6 @@ def test_document_table_object_map_converts_empty_to_none():
     assert agg.template_id is None
     assert agg.folder_id is None
 
-
 # ** test: document_table_object_from_model_converts_none_to_empty
 def test_document_table_object_from_model_converts_none_to_empty():
     '''Test that from_model() converts None FKs to empty strings for HDF5.'''
@@ -196,5 +190,4 @@ def test_document_table_object_from_model_converts_none_to_empty():
     obj = DocumentTableObject.from_model(agg)
     assert obj.template_id == ''
     assert obj.folder_id == ''
-
 

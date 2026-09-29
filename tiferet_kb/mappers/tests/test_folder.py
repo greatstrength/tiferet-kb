@@ -20,7 +20,6 @@ AGGREGATE_SAMPLE_DATA = {
 # ** constant: equality_fields
 EQUALITY_FIELDS = ['id', 'name', 'parent_id', 'path', 'created_at']
 
-
 # *** classes
 
 # ** class: TestFolderAggregate
@@ -66,7 +65,6 @@ class TestFolderAggregate(AggregateTestBase):
 
         aggregate.update_path('/engineering/infra')
         assert aggregate.path == '/engineering/infra'
-
 
 # ** class: TestFolderNodeObject
 class TestFolderNodeObject(NodeObjectTestBase):
