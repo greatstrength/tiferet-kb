@@ -2,12 +2,31 @@
 
 # *** imports
 
+# ** core
+import os
+
 # ** infra
 import pytest
+import tables
+from tiferet.interfaces import ServiceError
+from tiferet_h5.repos import NodeRepository, TableRepository
+from tiferet_h5.utils import H5Client
 
 # ** app
-from ...mappers.template import TemplateAggregate, TemplateSectionAggregate
-from ..template import TemplateH5Repository
+from ...mappers.template import (
+    TemplateAggregate,
+    TemplateSectionAggregate,
+    TemplateSectionTableObject,
+    TemplateTableObject,
+)
+from ...utils.h5 import remove_node
+from ..template import (
+    TEMPLATE_SECTIONS_TABLE,
+    TEMPLATES_TABLE,
+    TemplateH5Repository,
+    TemplateSectionTableRepository,
+    TemplateTableRepository,
+)
 
 # *** fixtures
 
@@ -176,3 +195,103 @@ def test_int_save_section_upsert(tmpl_repo, sample_template, sample_section):
     result = tmpl_repo.get('tmpl-001')
     assert len(result.sections) == 1
     assert result.sections[0].default_content == 'Updated agenda'
+
+
+# *** tests: RFP-001 storage alignment
+
+# ** test_int: inherits_neither_mixin
+def test_int_inherits_neither_mixin():
+    '''The service repository inherits no mixin; each collaborator inherits TableRepository only.'''
+
+    assert not issubclass(TemplateH5Repository, TableRepository)
+    assert not issubclass(TemplateH5Repository, NodeRepository)
+    for collaborator in (TemplateTableRepository, TemplateSectionTableRepository):
+        assert issubclass(collaborator, TableRepository)
+        assert not issubclass(collaborator, NodeRepository)
+    assert TemplateTableRepository.table_path == TEMPLATES_TABLE
+    assert TemplateSectionTableRepository.table_path == TEMPLATE_SECTIONS_TABLE
+
+
+# ** test_int: second_save_leaves_one_header_row
+def test_int_second_save_leaves_one_header_row(tmpl_repo, h5_file, sample_template):
+    '''Saving the same template id twice leaves a single header row.'''
+
+    tmpl_repo.save(sample_template)
+    sample_template.rename('Renamed')
+    tmpl_repo.save(sample_template)
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        rows = h5.read_rows(TEMPLATES_TABLE)
+    assert len(rows) == 1
+    assert tmpl_repo.get('tmpl-001').name == 'Renamed'
+
+
+# ** test_int: tables_are_stamped_on_first_create
+def test_int_tables_are_stamped_on_first_create(tmpl_repo, h5_file, sample_template, sample_section):
+    '''Both template tables carry their class fingerprint, and a later save does not rewrite it.'''
+
+    tmpl_repo.save(sample_template)
+    tmpl_repo.save_section(sample_section)
+
+    with H5Client(path=h5_file, mode='a') as h5:
+        assert h5.get_node_attr(TEMPLATES_TABLE, 'schema_version') == TemplateTableObject.schema_fingerprint()
+        assert h5.get_node_attr(TEMPLATE_SECTIONS_TABLE, 'schema_version') == TemplateSectionTableObject.schema_fingerprint()
+        h5.set_node_attr(TEMPLATES_TABLE, 'schema_version', 'sentinel')
+
+    tmpl_repo.save(sample_template)
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.get_node_attr(TEMPLATES_TABLE, 'schema_version') == 'sentinel'
+
+
+# ** test_int: verify_passes_and_detects_drift
+def test_int_verify_passes_and_detects_drift(tmpl_repo, h5_file, sample_template, sample_section):
+    '''verify passes on fresh tables and raises H5_SCHEMA_MISMATCH after a width change.'''
+
+    tmpl_repo.save(sample_template)
+    tmpl_repo.save_section(sample_section)
+    tmpl_repo.verify()
+
+    # Replace the header table with a narrower name column.
+    narrow = type(
+        'NarrowTemplateDescription',
+        (tables.IsDescription,),
+        {**TemplateTableObject._H5_TYPES, 'name': tables.StringCol(8)},
+    )
+    with H5Client(path=h5_file, mode='a') as h5:
+        remove_node(h5, TEMPLATES_TABLE)
+        h5.create_table(TEMPLATES_TABLE, narrow)
+
+    with pytest.raises(ServiceError) as exc_info:
+        tmpl_repo.verify()
+    assert exc_info.value.error_code == 'H5_SCHEMA_MISMATCH'
+
+
+# ** test_int: unstamped_file_still_opens
+def test_int_unstamped_file_still_opens(tmpl_repo, h5_file, sample_template):
+    '''A file written without schema_version still lists and verifies, and reads do not stamp it.'''
+
+    with H5Client(path=h5_file, mode='a') as h5:
+        t = h5.create_table(TEMPLATES_TABLE, TemplateTableObject.get_description())
+        TemplateTableObject.from_model(sample_template).to_row(t)
+        t.flush()
+
+    assert [t.id for t in tmpl_repo.list()] == ['tmpl-001']
+    assert tmpl_repo.exists('tmpl-001') is True
+    tmpl_repo.verify()
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert 'schema_version' not in h5.get_node_attrs(TEMPLATES_TABLE)
+
+
+# ** test_int: missing_file_reads_are_empty_and_not_created
+def test_int_missing_file_reads_are_empty_and_not_created(tmpl_repo, h5_file):
+    '''Reads, delete, and verify on a missing file do not create the file.'''
+
+    assert tmpl_repo.get('nope') is None
+    assert tmpl_repo.exists('nope') is False
+    assert tmpl_repo.list() == []
+    tmpl_repo.delete('nope')
+    tmpl_repo.verify()
+
+    assert not os.path.exists(h5_file)

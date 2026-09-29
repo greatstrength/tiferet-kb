@@ -2,12 +2,32 @@
 
 # *** imports
 
+# ** core
+import inspect
+import os
+
 # ** infra
 import pytest
+import tables
+from tiferet.assets import TiferetError
+from tiferet.interfaces import ServiceError
+from tiferet_h5.repos import NodeRepository, TableRepository
+from tiferet_h5.utils import H5Client
 
 # ** app
-from ...mappers.document import DocumentAggregate, DocumentSectionAggregate
-from ..document import DocumentH5Repository
+from ...mappers.document import (
+    DocumentAggregate,
+    DocumentSectionAggregate,
+    DocumentTableObject,
+)
+from ...mappers.segment import HybridSegmentTableObject
+from ...utils.markdown import parse_content_to_paragraphs
+from ..document import (
+    DOCUMENTS_TABLE,
+    EMBEDDINGS_ARRAY,
+    EMBEDDING_IDS_ARRAY,
+    DocumentH5Repository,
+)
 
 # *** fixtures
 
@@ -446,3 +466,188 @@ def test_int_delete_document_cascades_embeddings(doc_repo, sample_document):
     doc_repo.delete('doc-001')
     assert doc_repo.get_embedding('sec-001') is None
     assert doc_repo.get_embedding('sec-002') is None
+
+
+# *** tests: RFP-001 storage alignment
+
+# ** test_int: inherits_h5_repository_only
+def test_int_inherits_h5_repository_only():
+    '''The document repository composes neither storage mixin.'''
+
+    assert not issubclass(DocumentH5Repository, TableRepository)
+    assert not issubclass(DocumentH5Repository, NodeRepository)
+
+
+# ** test_int: header_table_is_stamped
+def test_int_header_table_is_stamped(doc_repo, h5_file, sample_document):
+    '''The header table carries the fingerprint, and a later save does not rewrite it.'''
+
+    doc_repo.save(sample_document)
+
+    with H5Client(path=h5_file, mode='a') as h5:
+        assert h5.get_node_attr(DOCUMENTS_TABLE, 'schema_version') == DocumentTableObject.schema_fingerprint()
+        h5.set_node_attr(DOCUMENTS_TABLE, 'schema_version', 'sentinel')
+
+    doc_repo.save(sample_document)
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.get_node_attr(DOCUMENTS_TABLE, 'schema_version') == 'sentinel'
+
+
+# ** test_int: segments_table_is_stamped_and_no_document_sections
+def test_int_segments_table_is_stamped_and_no_document_sections(doc_repo, h5_file, sample_document, sample_section):
+    '''A new section's segments table is stamped; no flat sections table or group stamp exists.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    section_path = '/kb/documents/doc-001/sections/sec-001'
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.get_node_attr(f'{section_path}/segments', 'schema_version') == HybridSegmentTableObject.schema_fingerprint()
+        assert not h5.node_exists('/kb/documents/document_sections')
+        assert 'schema_version' not in h5.get_node_attrs(section_path)
+        assert 'schema_version' not in h5.get_node_attrs('/kb/documents/doc-001')
+
+
+# ** test_int: save_section_keeps_group_and_replaces_segments
+def test_int_save_section_keeps_group_and_replaces_segments(doc_repo, h5_file, sample_document, sample_section):
+    '''A second save_section leaves the section group and its other children in place.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    # Add a sibling child to the section group and mark the group itself.
+    section_path = '/kb/documents/doc-001/sections/sec-001'
+    with H5Client(path=h5_file, mode='a') as h5:
+        h5.create_group(f'{section_path}/marker')
+        h5.set_node_attr(f'{section_path}/marker', 'kept', True)
+
+    # Rewrite the passage with different content.
+    sample_section.set_paragraphs(parse_content_to_paragraphs('Rewritten passage.', 'sec-001'))
+    doc_repo.save_section(sample_section)
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.node_exists(f'{section_path}/marker')
+        rows = h5.read_rows(f'{section_path}/segments')
+        assert len(rows) == 1
+        assert rows[0]['text'] == 'Rewritten passage.'
+        assert h5.get_node_attr(f'{section_path}/segments', 'schema_version') == HybridSegmentTableObject.schema_fingerprint()
+
+    # Exactly one section remains.
+    assert len(doc_repo.get_sections('doc-001')) == 1
+
+
+# ** test_int: verify_passes_on_fresh_tables
+def test_int_verify_passes_on_fresh_tables(doc_repo, sample_document, sample_section):
+    '''verify does not raise on tables just created by this code.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+
+    doc_repo.verify()
+    doc_repo.verify(section_path='/kb/documents/doc-001/sections/sec-001')
+
+
+# ** test_int: verify_missing_file_or_table_is_noop
+def test_int_verify_missing_file_or_table_is_noop(doc_repo, h5_file, sample_document):
+    '''verify on a missing file, a missing table, or a missing section does nothing and creates nothing.'''
+
+    doc_repo.verify()
+    assert not os.path.exists(h5_file)
+
+    doc_repo.save(sample_document)
+    doc_repo.verify(section_path='/kb/documents/doc-001/sections/none')
+
+
+# ** test_int: verify_raises_on_column_drift
+def test_int_verify_raises_on_column_drift(doc_repo, h5_file):
+    '''verify raises H5_SCHEMA_MISMATCH when a column width has changed.'''
+
+    # Build the header table with a narrower title column.
+    narrow = type(
+        'NarrowDocumentDescription',
+        (tables.IsDescription,),
+        {**DocumentTableObject._H5_TYPES, 'title': tables.StringCol(32)},
+    )
+    with H5Client(path=h5_file, mode='a') as h5:
+        h5.create_table(DOCUMENTS_TABLE, narrow)
+
+    with pytest.raises(ServiceError) as exc_info:
+        doc_repo.verify()
+    assert exc_info.value.error_code == 'H5_SCHEMA_MISMATCH'
+
+
+# ** test_int: unstamped_file_still_opens
+def test_int_unstamped_file_still_opens(doc_repo, h5_file, sample_document):
+    '''A file written without schema_version still lists, verifies, and is not stamped by reads.'''
+
+    # Write the header table the way the prototype did: no stamp.
+    with H5Client(path=h5_file, mode='a') as h5:
+        t = h5.create_table(DOCUMENTS_TABLE, DocumentTableObject.get_description())
+        DocumentTableObject.from_model(sample_document).to_row(t)
+        t.flush()
+
+    listed = doc_repo.list()
+    assert [d.id for d in listed] == ['doc-001']
+    assert doc_repo.get('doc-001') is not None
+    assert doc_repo.exists('doc-001') is True
+    doc_repo.verify()
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert 'schema_version' not in h5.get_node_attrs(DOCUMENTS_TABLE)
+
+
+# ** test_int: embed_dimension_mismatch
+def test_int_embed_dimension_mismatch(doc_repo, sample_document, sample_section):
+    '''A vector of a different length raises the KB dimension mismatch as a TiferetError.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    doc_repo.embed_section('sec-001', [0.1, 0.2, 0.3], 'test-model')
+
+    with pytest.raises(TiferetError) as exc_info:
+        doc_repo.embed_section('sec-002', [0.1, 0.2], 'test-model')
+    assert exc_info.value.error_code == 'KB_EMBEDDING_DIMENSION_MISMATCH'
+
+    # The stored embedding is untouched.
+    assert doc_repo.get_embedding('sec-001') is not None
+
+
+# ** test_int: search_similar_signature
+def test_int_search_similar_signature():
+    '''search_similar keeps folder_id and category_id and has no document_id.'''
+
+    params = inspect.signature(DocumentH5Repository.search_similar).parameters
+    assert 'folder_id' in params
+    assert 'category_id' in params
+    assert 'document_id' not in params
+
+
+# ** test_int: delete_section_scan_preserves_header_and_arrays
+def test_int_delete_section_scan_preserves_header_and_arrays(doc_repo, h5_file, sample_document, sample_section):
+    '''Deleting a section without a document id leaves the header table and the other arrays alone.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    doc_repo.embed_section('sec-001', [0.1, 0.2, 0.3], 'test-model')
+    doc_repo.embed_section('sec-keep', [0.3, 0.2, 0.1], 'test-model')
+
+    doc_repo.delete_section('sec-001')
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert not h5.node_exists('/kb/documents/doc-001/sections/sec-001')
+        assert h5.node_exists(DOCUMENTS_TABLE)
+        assert h5.node_exists(EMBEDDINGS_ARRAY)
+        assert h5.node_exists(EMBEDDING_IDS_ARRAY)
+
+    assert doc_repo.exists('doc-001') is True
+    assert doc_repo.get_embedding('sec-001') is None
+    assert doc_repo.get_embedding('sec-keep') is not None
+
+
+# ** test_int: delete_document_missing_is_noop
+def test_int_delete_document_missing_is_noop(doc_repo, sample_document):
+    '''Deleting an absent document does not raise.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.delete('nonexistent')
