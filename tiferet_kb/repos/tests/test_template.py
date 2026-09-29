@@ -19,6 +19,7 @@ from ...mappers.template import (
     TemplateSectionTableObject,
     TemplateTableObject,
 )
+from ..core import KBNodeRepository
 from ..template import (
     TEMPLATE_SECTIONS_TABLE,
     TEMPLATES_TABLE,
@@ -240,7 +241,7 @@ def test_int_verify_passes_and_detects_drift(tmpl_repo, h5_file, sample_template
         {**TemplateTableObject._H5_TYPES, 'name': tables.StringCol(8)},
     )
     with H5Client(path=h5_file, mode='a') as h5:
-        tmpl_repo.remove_node(h5, TEMPLATES_TABLE)
+        KBNodeRepository(h5_file=h5_file).remove_node(h5, TEMPLATES_TABLE)
         h5.create_table(TEMPLATES_TABLE, narrow)
 
     with pytest.raises(ServiceError) as exc_info:

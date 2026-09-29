@@ -6,7 +6,7 @@
 from typing import List, Optional
 
 # ** app
-from tiferet_h5.repos import TableRepository
+from tiferet_h5.repos import H5Repository
 
 from ..interfaces.template import TemplateService
 from ..mappers.template import (
@@ -15,7 +15,7 @@ from ..mappers.template import (
     TemplateTableObject,
     TemplateSectionTableObject,
 )
-from .core import KBH5Repository
+from .core import KBTableRepository
 
 # *** constants
 
@@ -31,7 +31,7 @@ TEMPLATE_SECTIONS_TABLE = '/kb/templates/template_sections'
 # *** repos
 
 # ** repo: template_table_repository
-class TemplateTableRepository(TableRepository, KBH5Repository):
+class TemplateTableRepository(KBTableRepository):
     '''
     Table collaborator for the template header rows.
 
@@ -46,7 +46,7 @@ class TemplateTableRepository(TableRepository, KBH5Repository):
     table_path = TEMPLATES_TABLE
 
 # ** repo: template_section_table_repository
-class TemplateSectionTableRepository(TableRepository, KBH5Repository):
+class TemplateSectionTableRepository(KBTableRepository):
     '''
     Table collaborator for the template section rows.
 
@@ -62,7 +62,7 @@ class TemplateSectionTableRepository(TableRepository, KBH5Repository):
     table_path = TEMPLATE_SECTIONS_TABLE
 
 # ** repo: template_h5_repository
-class TemplateH5Repository(KBH5Repository, TemplateService):
+class TemplateH5Repository(H5Repository, TemplateService):
     '''
     HDF5-backed repository for knowledge base templates.
 

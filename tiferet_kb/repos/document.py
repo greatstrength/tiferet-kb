@@ -10,6 +10,7 @@ import numpy as np
 
 # ** app
 from tiferet.assets import TiferetError
+from tiferet_h5.repos import H5Repository
 
 from ..interfaces.document import DocumentService
 from ..domain.segment import TextSegment, Paragraph
@@ -20,7 +21,7 @@ from ..mappers.document import (
     DocumentSectionNodeObject,
 )
 from ..mappers.segment import HybridSegmentTableObject
-from .core import KBH5Repository
+from .core import KBNodeRepository, KBTableRepository
 
 # *** constants
 
@@ -39,7 +40,7 @@ EMBEDDING_IDS_ARRAY = '/kb/documents/section_embedding_ids'
 # *** repos
 
 # ** repo: document_h5_repository
-class DocumentH5Repository(KBH5Repository, DocumentService):
+class DocumentH5Repository(H5Repository, DocumentService):
     '''
     HDF5-backed repository for knowledge base documents.
 
@@ -52,18 +53,26 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
     The ``get()`` method joins the header row and section groups to return
     a fully-populated aggregate.
 
-    This class stays on ``KBH5Repository`` and does not compose
+    This class stays on ``H5Repository`` and does not inherit
     ``TableRepository`` or ``NodeRepository``: the header is a table, the
     section is a node plus a nested table, and the vectors are arrays.
-    Group and array removal goes through ``KBH5Repository.remove_node``.
+    Group and array removal goes through ``KBNodeRepository.remove_node``,
+    and stamped table creation through ``KBTableRepository.ensure_table``;
+    each is held as a collaborator.
     The header and each ``segments`` table are stamped with
     ``schema_version`` on first create; ``verify`` is the opt-in check.
     '''
 
+    # * attribute: node_repo
+    node_repo: KBNodeRepository
+
+    # * attribute: table_repo
+    table_repo: KBTableRepository
+
     # * init
     def __init__(self, h5_file: str, mode: str = 'a') -> None:
         '''
-        Initialize the document H5 repository.
+        Initialize the document H5 repository and its node and table collaborators.
 
         :param h5_file: Path to the HDF5 file.
         :type h5_file: str
@@ -73,6 +82,10 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
 
         # Initialize the parent H5Repository.
         super().__init__(h5_file=h5_file, mode=mode)
+
+        # Hold one collaborator per storage shape, sharing the same file.
+        self.node_repo = KBNodeRepository(h5_file=h5_file, mode=mode)
+        self.table_repo = KBTableRepository(h5_file=h5_file, mode=mode)
 
     # * method: exists
     def exists(self, id: str) -> bool:
@@ -198,7 +211,7 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
             self._ensure_group(h5)
 
             # Get or create the documents table, stamping the schema on create.
-            t = self.ensure_table(
+            t = self.table_repo.ensure_table(
                 h5,
                 DOCUMENTS_TABLE,
                 DocumentTableObject,
@@ -292,7 +305,7 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
                 h5.remove_rows(DOCUMENTS_TABLE, f'(id == b"{id}")')
 
             # Cascade: remove all section groups for this document.
-            self.remove_node(h5, f'{DOCUMENTS_GROUP}/{id}', recursive=True)
+            self.node_repo.remove_node(h5, f'{DOCUMENTS_GROUP}/{id}', recursive=True)
 
             # Cascade: remove embeddings for all deleted sections.
             if section_ids:
@@ -349,8 +362,8 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
 
             # Replace the segments table only, never the section group.
             segments_path = f'{section_group}/segments'
-            self.remove_node(h5, segments_path)
-            t = self.ensure_table(
+            self.node_repo.remove_node(h5, segments_path)
+            t = self.table_repo.ensure_table(
                 h5,
                 segments_path,
                 HybridSegmentTableObject,
@@ -393,7 +406,7 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
             # Find and remove the section group.
             if document_id:
                 section_group = f'{DOCUMENTS_GROUP}/{document_id}/sections/{section_id}'
-                self.remove_node(h5, section_group, recursive=True)
+                self.node_repo.remove_node(h5, section_group, recursive=True)
             else:
                 # Search all document groups for the section.
                 self._find_and_remove_section(h5, section_id)
@@ -489,8 +502,8 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
                     new_ids = np.append(existing_ids, np.bytes_(section_id))
 
                 # Remove old arrays and recreate with updated data.
-                self.remove_node(h5, EMBEDDINGS_ARRAY)
-                self.remove_node(h5, EMBEDDING_IDS_ARRAY)
+                self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+                self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
             else:
                 # First embedding: create new arrays.
@@ -652,8 +665,8 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
         mask = np.array([sid != section_id for sid in id_list])
 
         # Remove old arrays.
-        self.remove_node(h5, EMBEDDINGS_ARRAY)
-        self.remove_node(h5, EMBEDDING_IDS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
         # Recreate only if there are remaining embeddings.
         if mask.any():
@@ -694,8 +707,8 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
             return
 
         # Remove old arrays.
-        self.remove_node(h5, EMBEDDINGS_ARRAY)
-        self.remove_node(h5, EMBEDDING_IDS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDINGS_ARRAY)
+        self.node_repo.remove_node(h5, EMBEDDING_IDS_ARRAY)
 
         # Recreate only if there are remaining embeddings.
         if mask.any():
@@ -816,7 +829,7 @@ class DocumentH5Repository(KBH5Repository, DocumentService):
         for doc_child in docs_root._v_children.values():
             section_path = f'{doc_child._v_pathname}/sections/{section_id}'
             if h5.node_exists(section_path):
-                self.remove_node(h5, section_path, recursive=True)
+                self.node_repo.remove_node(h5, section_path, recursive=True)
                 return
 
     # * method: _get_filtered_section_ids

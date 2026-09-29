@@ -13,7 +13,7 @@ from ..mappers.folder import (
     FolderAggregate,
     FolderNodeObject,
 )
-from .core import KBH5Repository
+from .core import KBNodeRepository
 
 # *** constants
 
@@ -23,7 +23,7 @@ FOLDERS_ROOT = '/kb/folders'
 # *** repos
 
 # ** repo: folder_h5_repository
-class FolderH5Repository(NodeRepository, KBH5Repository, FolderService):
+class FolderH5Repository(KBNodeRepository, FolderService):
     '''
     HDF5-backed repository for knowledge base folders.
 
@@ -32,11 +32,11 @@ class FolderH5Repository(NodeRepository, KBH5Repository, FolderService):
     scalar metadata (name, parent_id, path, created_at) as
     attributes via ``FolderNodeObject``.
 
-    ``NodeRepository`` owns path resolution, ``save``, and ``exists``.
+    ``NodeRepository`` (through ``KBNodeRepository``) owns path resolution, ``save``, and ``exists``.
     ``get`` stays overridden because the identifier is the group name and
     is not an attribute.  ``list`` walks the child groups and filters by
     ``parent_id`` in Python.  ``delete`` removes the group through
-    ``KBH5Repository.remove_node``.
+    ``KBNodeRepository.remove_node``.
     '''
 
     # * attribute: node_cls

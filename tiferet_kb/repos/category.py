@@ -13,7 +13,7 @@ from ..mappers import (
     CategoryAggregate,
     CategoryNodeObject,
 )
-from .core import KBH5Repository
+from .core import KBNodeRepository
 
 # *** constants
 
@@ -23,7 +23,7 @@ CATEGORIES_ROOT = '/kb/categories'
 # *** repos
 
 # ** repo: category_h5_repository
-class CategoryH5Repository(NodeRepository, KBH5Repository, CategoryService):
+class CategoryH5Repository(KBNodeRepository, CategoryService):
     '''
     HDF5-backed repository for knowledge base categories.
 
@@ -32,10 +32,10 @@ class CategoryH5Repository(NodeRepository, KBH5Repository, CategoryService):
     scalar metadata (name, description, icon, color) as attributes
     via ``CategoryNodeObject``.
 
-    ``NodeRepository`` owns path resolution, ``save``, and ``exists``.
+    ``NodeRepository`` (through ``KBNodeRepository``) owns path resolution, ``save``, and ``exists``.
     ``get`` stays overridden because the identifier is the group name and
     is not an attribute.  ``list`` walks the child groups.  ``delete``
-    removes the group through ``KBH5Repository.remove_node``.
+    removes the group through ``KBNodeRepository.remove_node``.
     '''
 
     # * attribute: node_cls

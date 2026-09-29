@@ -1,4 +1,4 @@
-"""tiferet_kb Core H5 Repository"""
+"""tiferet_kb Core H5 Repositories"""
 
 # *** imports
 
@@ -7,7 +7,7 @@ from typing import Any, Type
 
 # ** app
 from tiferet_h5.mappers import TableObject
-from tiferet_h5.repos import H5Repository
+from tiferet_h5.repos import H5Repository, NodeRepository, TableRepository
 
 # *** constants
 
@@ -16,16 +16,16 @@ SCHEMA_VERSION_ATTR = 'schema_version'
 
 # *** classes
 
-# ** class: kb_h5_repository
-class KBH5Repository(H5Repository):
+# ** class: kb_node_repository
+class KBNodeRepository(NodeRepository, H5Repository):
     '''
-    Base repository for tiferet-kb HDF5 stores.
+    Node repository for tiferet-kb HDF5 stores.
 
-    Adds the two operations ``H5Client`` in tiferet-h5 1.x does not provide
-    to every kb repository: removing a group or array node, and creating a
-    table that carries its schema fingerprint.  Every repository in
-    ``tiferet_kb.repos`` extends this class, so no repository reaches past
-    the client to delete a node.
+    Extends tiferet-h5's ``NodeRepository`` (beside ``H5Repository``) with
+    ``remove_node``, because ``H5Client`` in tiferet-h5 1.x has no
+    node-removal method and ``NodeRepository`` has no ``delete``.  Do not also
+    compose ``TableRepository`` on the same class; ``save``, ``get``, and
+    ``exists`` collide.
     '''
 
     # * method: remove_node
@@ -54,6 +54,18 @@ class KBH5Repository(H5Repository):
 
         # Remove the node through the underlying PyTables file.
         h5.h5file.remove_node(path, recursive=recursive)
+
+# ** class: kb_table_repository
+class KBTableRepository(TableRepository, H5Repository):
+    '''
+    Table repository for tiferet-kb HDF5 stores.
+
+    Extends tiferet-h5's ``TableRepository`` (beside ``H5Repository``) with
+    ``ensure_table``, which creates a table on an already-open client and
+    stamps ``schema_version`` the same way ``TableRepository.save`` does.  Do
+    not also compose ``NodeRepository`` on the same class; ``save``, ``get``,
+    and ``exists`` collide.
+    '''
 
     # * method: ensure_table
     def ensure_table(self,
