@@ -180,7 +180,8 @@ class DocumentTableObject(TableObject):
     An HDF5 table-row representation of a document header.
 
     Stored as rows in ``/kb/documents/documents``.  The ``sections``
-    field is excluded — sections are stored in a separate table.
+    field is excluded — sections are group nodes with a nested ``segments``
+    table under ``/kb/documents/<document_id>/sections/``.
     '''
 
     # * attribute: id
