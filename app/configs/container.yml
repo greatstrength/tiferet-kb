@@ -32,6 +32,12 @@ attrs:
   remove_document_event:
     module_path: tiferet_kb.events.document
     class_name: RemoveDocument
+  set_document_property_event:
+    module_path: tiferet_kb.events.document
+    class_name: SetDocumentProperty
+  remove_document_property_event:
+    module_path: tiferet_kb.events.document
+    class_name: RemoveDocumentProperty
 
   # Section events
   add_document_section_event:
