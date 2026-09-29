@@ -18,6 +18,7 @@ from ..document import (
     GetDocument,
     ListDocuments,
     UpdateDocument,
+    SetDocumentVisibility,
     RemoveDocument,
     AddDocumentSection,
     UpdateDocumentSection,
@@ -192,6 +193,8 @@ def test_list_documents_with_filters(mock_document_service, mock_tag_service):
         property_name=None,
         property_value=None,
         property_value_type=None,
+        visibility=None,
+        owner_id=None,
     )
     mock_tag_service.list_document_ids.assert_not_called()
 
@@ -219,6 +222,8 @@ def test_list_documents_forwards_title(mock_document_service, mock_tag_service):
         property_name=None,
         property_value=None,
         property_value_type=None,
+        visibility=None,
+        owner_id=None,
     )
     mock_tag_service.list_document_ids.assert_not_called()
 
@@ -488,3 +493,172 @@ def test_reorder_document_sections_document_not_found(mock_document_service):
             document_id='nonexistent',
             section_ids=['sec-001'],
         )
+
+# *** tests: RFP-008 visibility
+
+# ** test: set_document_visibility_success
+def test_set_document_visibility_success(mock_document_service, sample_document):
+    '''SetDocumentVisibility updates access fields and leaves the rest of the header alone.'''
+
+    sample_document.sections = []
+    mock_document_service.get.return_value = sample_document
+    before = sample_document.updated_at
+
+    result = DomainEvent.handle(
+        SetDocumentVisibility,
+        dependencies={'document_service': mock_document_service},
+        id='doc-001',
+        visibility='private',
+        owner_id='owner-1',
+    )
+
+    assert result.visibility == 'private'
+    assert result.owner_id == 'owner-1'
+    assert result.title == 'Test Document'
+    assert result.status == 'draft'
+    assert result.updated_at != before
+    mock_document_service.save.assert_called_once()
+    mock_document_service.exists.assert_not_called()
+
+# ** test: set_document_visibility_clears_owner
+def test_set_document_visibility_clears_owner(mock_document_service, sample_document):
+    '''An omitted, empty, or whitespace owner clears the stored owner.'''
+
+    sample_document.owner_id = 'owner-1'
+    mock_document_service.get.return_value = sample_document
+
+    result = DomainEvent.handle(
+        SetDocumentVisibility,
+        dependencies={'document_service': mock_document_service},
+        id='doc-001',
+        visibility='public',
+        owner_id='   ',
+    )
+
+    assert result.visibility == 'public'
+    assert result.owner_id is None
+
+# ** test: set_document_visibility_not_found
+def test_set_document_visibility_not_found(mock_document_service):
+    '''A missing document raises the existing not-found error and is not created.'''
+
+    mock_document_service.get.return_value = None
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            SetDocumentVisibility,
+            dependencies={'document_service': mock_document_service},
+            id='missing',
+            visibility='private',
+        )
+
+    assert exc_info.value.error_code == 'KB_DOCUMENT_NOT_FOUND'
+    mock_document_service.save.assert_not_called()
+
+# ** test: set_document_visibility_rejects_status_token
+def test_set_document_visibility_rejects_status_token(mock_document_service):
+    '''A status token is KB_INVALID_VISIBILITY, not KB_INVALID_DOCUMENT_STATUS.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            SetDocumentVisibility,
+            dependencies={'document_service': mock_document_service},
+            id='doc-001',
+            visibility='published',
+        )
+
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
+    assert 'status' not in str(exc_info.value)
+    mock_document_service.get.assert_not_called()
+
+# ** test: add_document_visibility
+def test_add_document_visibility(mock_document_service):
+    '''AddDocument accepts visibility and owner, and rejects a token outside the set.'''
+
+    mock_document_service.exists.return_value = False
+
+    created = DomainEvent.handle(
+        AddDocument,
+        dependencies={'document_service': mock_document_service},
+        title='Owned',
+        visibility='restricted',
+        owner_id='owner-2',
+    )
+    assert created.visibility == 'restricted'
+    assert created.owner_id == 'owner-2'
+
+    omitted = DomainEvent.handle(
+        AddDocument,
+        dependencies={'document_service': mock_document_service},
+        title='Plain',
+    )
+    assert omitted.visibility == 'public'
+    assert omitted.owner_id is None
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            AddDocument,
+            dependencies={'document_service': mock_document_service},
+            title='Bad',
+            visibility='Draft',
+        )
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
+
+# ** test: list_documents_passes_access_filters
+def test_list_documents_passes_access_filters(mock_document_service, mock_tag_service):
+    '''ListDocuments passes visibility and owner and still omits include_sections.'''
+
+    mock_document_service.list.return_value = []
+
+    DomainEvent.handle(
+        ListDocuments,
+        dependencies={
+            'document_service': mock_document_service,
+            'tag_service': mock_tag_service,
+        },
+        visibility='public',
+        owner_id='owner-1',
+    )
+
+    mock_document_service.list.assert_called_once_with(
+        folder_id=None,
+        category_id=None,
+        status=None,
+        title=None,
+        include_properties=False,
+        property_name=None,
+        property_value=None,
+        property_value_type=None,
+        visibility='public',
+        owner_id='owner-1',
+    )
+
+# ** test: list_documents_rejects_unknown_visibility
+def test_list_documents_rejects_unknown_visibility(mock_document_service, mock_tag_service):
+    '''An unrecognized list filter is KB_INVALID_VISIBILITY.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            ListDocuments,
+            dependencies={
+                'document_service': mock_document_service,
+                'tag_service': mock_tag_service,
+            },
+            visibility='archived',
+        )
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
+    mock_document_service.list.assert_not_called()
+
+# ** test: update_document_rejects_visibility_attribute
+def test_update_document_rejects_visibility_attribute(mock_document_service):
+    '''UpdateDocument still allows only title, status, category_id, and folder_id.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            UpdateDocument,
+            dependencies={'document_service': mock_document_service},
+            id='doc-001',
+            attribute='visibility',
+            value='private',
+        )
+    assert exc_info.value.error_code == 'KB_INVALID_DOCUMENT_ATTRIBUTE'

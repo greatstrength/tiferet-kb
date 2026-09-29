@@ -20,6 +20,26 @@ from ..mappers.document import (
 )
 from ..utils.markdown import parse_content_to_paragraphs
 
+# *** functions
+
+# ** function: cleared_owner_id
+def cleared_owner_id(owner_id: str | None) -> str | None:
+    '''
+    Return a stored owner, or None when the caller omitted, emptied, or blanked it.
+
+    :param owner_id: The caller-supplied owner identifier.
+    :type owner_id: str | None
+    :return: The owner to store, or None to clear.
+    :rtype: str | None
+    '''
+
+    # A missing, empty, or whitespace-only value clears the owner.
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        return None
+
+    # Keep a non-empty owner exactly as supplied.
+    return owner_id
+
 # *** events
 
 # ** event: add_document
@@ -52,6 +72,8 @@ class AddDocument(DomainEvent):
             template_id: str | None = None,
             folder_id: str | None = None,
             status: str | None = None,
+            visibility: str | None = None,
+            owner_id: str | None = None,
             **kwargs,
         ) -> Document:
         '''
@@ -69,6 +91,10 @@ class AddDocument(DomainEvent):
         :type folder_id: str | None
         :param status: Optional initial status (defaults to 'draft').
         :type status: str | None
+        :param visibility: Optional visibility token. Omitted reads as public.
+        :type visibility: str | None
+        :param owner_id: Optional opaque owner. Empty or whitespace clears it.
+        :type owner_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: The created document.
@@ -87,6 +113,10 @@ class AddDocument(DomainEvent):
             doc_kwargs['folder_id'] = folder_id
         if status:
             doc_kwargs['status'] = status
+        if visibility is not None:
+            doc_kwargs['visibility'] = visibility
+        if owner_id is not None:
+            doc_kwargs['owner_id'] = cleared_owner_id(owner_id)
 
         # Create the document aggregate (UUID and timestamps auto-derived).
         document = DocumentAggregate(**doc_kwargs)
@@ -107,6 +137,15 @@ class AddDocument(DomainEvent):
                 error_code=a.errors.KB_INVALID_DOCUMENT_STATUS_ID,
                 message=f'Invalid document status: {status}',
                 status=status,
+            )
+
+        # A supplied visibility must be one of the three exact tokens.
+        if visibility is not None:
+            self.verify(
+                expression=visibility in a.core.VISIBILITIES,
+                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
             )
 
         # Persist the new document.
@@ -206,6 +245,8 @@ class ListDocuments(DomainEvent):
             property_value: Any = None,
             property_value_type: str | None = None,
             tag_id: str | None = None,
+            visibility: str | None = None,
+            owner_id: str | None = None,
             **kwargs,
         ) -> List[Document]:
         '''
@@ -234,6 +275,10 @@ class ListDocuments(DomainEvent):
         :type property_value_type: str | None
         :param tag_id: Optional tag identifier. Empty means no tag condition.
         :type tag_id: str | None
+        :param visibility: Optional visibility to filter by.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by.
+        :type owner_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: A list of document headers.
@@ -254,8 +299,17 @@ class ListDocuments(DomainEvent):
                 value_type=property_value_type,
             )
 
-        # Header filters stay on the document service. Always forward title
-        # and the property arguments. Do not pass tag_id.
+        # An unrecognized visibility is not an empty list and not a status filter.
+        if visibility is not None:
+            self.verify(
+                expression=visibility in a.core.VISIBILITIES,
+                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
+            )
+
+        # Header filters stay on the document service. Always forward title,
+        # property arguments, and access filters. Do not pass tag_id or include_sections.
         documents = self.document_service.list(
             folder_id=folder_id,
             category_id=category_id,
@@ -265,6 +319,8 @@ class ListDocuments(DomainEvent):
             property_name=property_name,
             property_value=property_value,
             property_value_type=property_value_type,
+            visibility=visibility,
+            owner_id=owner_id,
         )
 
         # An omitted or empty tag id is no tag condition.
@@ -369,6 +425,80 @@ class UpdateDocument(DomainEvent):
             document.set_folder(value)
 
         # Persist the updated document.
+        self.document_service.save(document)
+
+        # Return the updated document.
+        return document
+
+# ** event: set_document_visibility
+class SetDocumentVisibility(DomainEvent):
+    '''
+    Event to set visibility and owner on an existing document.
+
+    Visibility is restated on every call. An omitted, empty, or
+    whitespace-only owner clears the stored owner. The call does not
+    create the document and does not change its other header fields.
+    '''
+
+    # * attribute: document_service
+    document_service: DocumentService
+
+    # * init
+    def __init__(self, document_service: DocumentService):
+        '''
+        Initialize the SetDocumentVisibility event.
+
+        :param document_service: The document service for retrieval and persistence.
+        :type document_service: DocumentService
+        '''
+
+        # Set the document service dependency.
+        self.document_service = document_service
+
+    # * method: execute
+    @DomainEvent.parameters_required(['id', 'visibility'])
+    def execute(self,
+            id: str,
+            visibility: str,
+            owner_id: str | None = None,
+            **kwargs,
+        ) -> Document:
+        '''
+        Set visibility and owner on an existing document.
+
+        :param id: The document identifier.
+        :type id: str
+        :param visibility: The visibility token (public, private, or restricted).
+        :type visibility: str
+        :param owner_id: Optional owner. Omitted, empty, or whitespace clears it.
+        :type owner_id: str | None
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The updated document.
+        :rtype: Document
+        '''
+
+        # Reject a token outside the closed set, including a status token.
+        self.verify(
+            expression=visibility in a.core.VISIBILITIES,
+            error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+            message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+            visibility=visibility,
+        )
+
+        # Retrieve the document. This event does not create one.
+        document = self.document_service.get(id)
+        self.verify(
+            expression=document is not None,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            document_id=id,
+        )
+
+        # Set the access fields. Other header fields stay as they were.
+        document.set_visibility(visibility)
+        document.set_owner(cleared_owner_id(owner_id))
+
+        # Persist the header. The setters already refreshed updated_at.
         self.document_service.save(document)
 
         # Return the updated document.

@@ -412,6 +412,8 @@ def test_list_event_forwards_property_arguments(doc_repo, tag_repo):
         'property_name': None,
         'property_value': None,
         'property_value_type': None,
+        'visibility': None,
+        'owner_id': None,
     }
     assert 'include_sections' not in seen
 
@@ -474,6 +476,8 @@ def test_header_columns_and_wiring_stay_in_scope():
         'template_id',
         'folder_id',
         'status',
+        'visibility',
+        'owner_id',
         'created_at',
         'updated_at',
     }

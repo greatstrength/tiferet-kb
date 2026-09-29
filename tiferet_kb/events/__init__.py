@@ -15,6 +15,7 @@ from .document import (
     GetDocument,
     ListDocuments,
     UpdateDocument,
+    SetDocumentVisibility,
     RemoveDocument,
     AddDocumentSection,
     UpdateDocumentSection,
@@ -39,6 +40,7 @@ from .embedding import (
 from .folder import (
     AddFolder,
     GetFolder,
+    SetFolderVisibility,
     ListFolderContents,
     MoveFolder,
     MoveDocument,

@@ -9,6 +9,7 @@ import os
 # ** infra
 import pytest
 import tables
+from tiferet.assets import TiferetError
 from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import NodeRepository, TableRepository
 from tiferet_h5.utils import H5Client
@@ -583,6 +584,8 @@ def test_int_search_similar_signature():
     assert 'category_id' in params
     assert 'document_id' in params
     assert params['document_id'].default is None
+    assert 'visibility' not in params
+    assert 'owner_id' not in params
 
 # ** test_int: delete_section_scan_preserves_header_and_arrays
 def test_int_delete_section_scan_preserves_header_and_arrays(doc_repo, h5_file, sample_document, sample_section):
@@ -736,3 +739,122 @@ def test_int_search_similar_document_id_masks_before_limit(doc_repo, monkeypatch
         folder_id='other-folder',
     )
     assert mismatch == []
+
+# *** tests: RFP-008 visibility
+
+# ** test_int: save_get_visibility_and_owner
+def test_int_save_get_visibility_and_owner(doc_repo):
+    '''A document can store visibility and an optional owner, and get returns them.'''
+
+    doc_repo.save(DocumentAggregate(
+        id='doc-private',
+        title='Private Doc',
+        status='published',
+        visibility='private',
+        owner_id='owner-1',
+    ))
+
+    loaded = doc_repo.get('doc-private')
+    assert loaded.visibility == 'private'
+    assert loaded.owner_id == 'owner-1'
+    assert loaded.visibility is not None
+
+# ** test_int: list_visibility_and_owner_conjoin
+def test_int_list_visibility_and_owner_conjoin(doc_repo):
+    '''Visibility and owner filters conjoin with status, and an omitted filter hides nothing.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-pub', title='Pub', status='draft', visibility='public'))
+    doc_repo.save(DocumentAggregate(
+        id='doc-priv', title='Priv', status='draft', visibility='private', owner_id='owner-1',
+    ))
+    doc_repo.save(DocumentAggregate(
+        id='doc-arch', title='Arch', status='archived', visibility='private', owner_id='owner-1',
+    ))
+
+    # Omitted filters do not hide private rows, and get needs no caller.
+    assert {d.id for d in doc_repo.list()} == {'doc-pub', 'doc-priv', 'doc-arch'}
+    assert doc_repo.get('doc-priv').visibility == 'private'
+
+    # public includes the stored public row. private does not include it.
+    assert {d.id for d in doc_repo.list(visibility='public')} == {'doc-pub'}
+    assert {d.id for d in doc_repo.list(visibility='private', status='draft')} == {'doc-priv'}
+    assert {d.id for d in doc_repo.list(owner_id='owner-1', status='draft')} == {'doc-priv'}
+    assert doc_repo.list(owner_id='missing') == []
+
+# ** test_int: list_public_includes_empty_visibility
+def test_int_list_public_includes_empty_visibility(doc_repo, h5_file):
+    '''visibility=public includes a stored empty visibility. private does not.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-empty', title='Empty', status='draft'))
+    with H5Client(path=h5_file, mode='a') as h5:
+        h5.remove_rows(DOCUMENTS_TABLE, '(id == b"doc-empty")')
+        table = h5.get_table(DOCUMENTS_TABLE)
+        DocumentTableObject(
+            id='doc-empty', title='Empty', status='draft', visibility='', owner_id='',
+            created_at='2026-01-01T00:00:00+00:00', updated_at='2026-01-01T00:00:00+00:00',
+        ).to_row(table)
+        table.flush()
+
+    loaded = doc_repo.get('doc-empty')
+    assert loaded.visibility == 'public'
+    assert loaded.owner_id is None
+    assert [d.id for d in doc_repo.list(visibility='public')] == ['doc-empty']
+    assert doc_repo.list(visibility='restricted') == []
+    assert doc_repo.list(owner_id='owner-1') == []
+
+# ** test_int: prechange_document_reads_public_without_rewrite
+def test_int_prechange_document_reads_public_without_rewrite(doc_repo, h5_file):
+    '''A header written before these columns exist reads as public with no owner.'''
+
+    # Build the header table without visibility or owner_id.
+    old_types = {
+        'id': tables.StringCol(64),
+        'title': tables.StringCol(512),
+        'category_id': tables.StringCol(64),
+        'template_id': tables.StringCol(64),
+        'folder_id': tables.StringCol(64),
+        'status': tables.StringCol(32),
+        'created_at': tables.StringCol(32),
+        'updated_at': tables.StringCol(32),
+    }
+    description = type('OldDocumentDescription', (tables.IsDescription,), old_types)
+    with tables.open_file(h5_file, mode='w') as h5file:
+        table = h5file.create_table('/kb/documents', 'documents', description, createparents=True)
+        row = table.row
+        row['id'] = b'doc-old'
+        row['title'] = b'Old Document'
+        row['category_id'] = b''
+        row['template_id'] = b''
+        row['folder_id'] = b''
+        row['status'] = b'draft'
+        row['created_at'] = b'2026-01-01T00:00:00+00:00'
+        row['updated_at'] = b'2026-01-01T00:00:00+00:00'
+        row.append()
+        table.flush()
+
+    loaded = doc_repo.get('doc-old')
+    assert loaded is not None
+    assert loaded.visibility == 'public'
+    assert loaded.owner_id is None
+    assert loaded.title == 'Old Document'
+
+    # public includes the absent column. private and an owner filter do not.
+    assert [d.id for d in doc_repo.list(visibility='public')] == ['doc-old']
+    assert doc_repo.list(visibility='private') == []
+    assert doc_repo.list(visibility='restricted') == []
+    assert doc_repo.list(owner_id='owner-1') == []
+    assert [d.id for d in doc_repo.list()] == ['doc-old']
+
+    # Reading did not add the columns.
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert 'visibility' not in h5.get_table(DOCUMENTS_TABLE).colnames
+        assert 'owner_id' not in h5.get_table(DOCUMENTS_TABLE).colnames
+
+# ** test_int: list_rejects_unknown_visibility
+def test_int_list_rejects_unknown_visibility(doc_repo):
+    '''An unrecognized visibility filter is KB_INVALID_VISIBILITY, not an empty list.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        doc_repo.list(visibility='draft')
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
+    assert 'status' not in exc_info.value.kwargs.get('message', str(exc_info.value))

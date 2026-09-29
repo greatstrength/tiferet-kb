@@ -17,6 +17,7 @@ from ...mappers.document import DocumentAggregate
 from ..folder import (
     AddFolder,
     GetFolder,
+    SetFolderVisibility,
     ListFolderContents,
     MoveFolder,
     MoveDocument,
@@ -31,13 +32,11 @@ def mock_folder_service() -> FolderService:
     '''Mock FolderService for testing.'''
     return mock.Mock(spec=FolderService)
 
-
 # ** fixture: mock_document_service
 @pytest.fixture
 def mock_document_service() -> DocumentService:
     '''Mock DocumentService for testing.'''
     return mock.Mock(spec=DocumentService)
-
 
 # ** fixture: sample_folder
 @pytest.fixture
@@ -47,7 +46,6 @@ def sample_folder() -> FolderAggregate:
         id='f-001', name='Projects', path='/Projects',
         created_at='2026-01-01T00:00:00+00:00',
     )
-
 
 # ** fixture: sample_document
 @pytest.fixture
@@ -76,7 +74,6 @@ def test_add_folder_success(mock_folder_service):
     assert result.path == '/Projects'
     mock_folder_service.save.assert_called_once()
 
-
 # ** test: add_folder_with_parent
 def test_add_folder_with_parent(mock_folder_service, sample_folder):
     '''Test creating a nested folder.'''
@@ -95,7 +92,6 @@ def test_add_folder_with_parent(mock_folder_service, sample_folder):
     assert result.path == '/Projects/Design'
     assert result.parent_id == 'f-001'
 
-
 # ** test: add_folder_duplicate
 def test_add_folder_duplicate(mock_folder_service):
     '''Test that adding a duplicate folder raises.'''
@@ -109,7 +105,6 @@ def test_add_folder_duplicate(mock_folder_service):
             name='Dup',
             id='existing',
         )
-
 
 # ** test: get_folder_success
 def test_get_folder_success(mock_folder_service, sample_folder):
@@ -125,7 +120,6 @@ def test_get_folder_success(mock_folder_service, sample_folder):
 
     assert result is sample_folder
 
-
 # ** test: get_folder_not_found
 def test_get_folder_not_found(mock_folder_service):
     '''Test not-found raises.'''
@@ -138,7 +132,6 @@ def test_get_folder_not_found(mock_folder_service):
             dependencies={'folder_service': mock_folder_service},
             id='nonexistent',
         )
-
 
 # ** test: list_folder_contents_success
 def test_list_folder_contents_success(mock_folder_service, mock_document_service, sample_folder, sample_document):
@@ -161,7 +154,6 @@ def test_list_folder_contents_success(mock_folder_service, mock_document_service
     assert 'documents' in result
     assert len(result['documents']) == 1
 
-
 # ** test: list_folder_contents_not_found
 def test_list_folder_contents_not_found(mock_folder_service, mock_document_service):
     '''Test that listing contents of a non-existent folder raises.'''
@@ -177,7 +169,6 @@ def test_list_folder_contents_not_found(mock_folder_service, mock_document_servi
             },
             folder_id='nonexistent',
         )
-
 
 # ** test: move_folder_success
 def test_move_folder_success(mock_folder_service, sample_folder):
@@ -196,7 +187,6 @@ def test_move_folder_success(mock_folder_service, sample_folder):
     assert result.parent_id == 'f-002'
     assert result.path == '/Engineering/Projects'
 
-
 # ** test: move_folder_circular_reference
 def test_move_folder_circular_reference(mock_folder_service, sample_folder):
     '''Test that moving a folder to itself raises.'''
@@ -210,7 +200,6 @@ def test_move_folder_circular_reference(mock_folder_service, sample_folder):
             id='f-001',
             new_parent_id='f-001',
         )
-
 
 # ** test: move_document_success
 def test_move_document_success(mock_document_service, sample_document):
@@ -228,7 +217,6 @@ def test_move_document_success(mock_document_service, sample_document):
     assert result == 'doc-001'
     mock_document_service.save.assert_called_once()
 
-
 # ** test: move_document_not_found
 def test_move_document_not_found(mock_document_service):
     '''Test that moving a non-existent document raises.'''
@@ -241,7 +229,6 @@ def test_move_document_not_found(mock_document_service):
             dependencies={'document_service': mock_document_service},
             document_id='nonexistent',
         )
-
 
 # ** test: remove_folder_success
 def test_remove_folder_success(mock_folder_service, mock_document_service, sample_document):
@@ -261,3 +248,110 @@ def test_remove_folder_success(mock_folder_service, mock_document_service, sampl
     assert result == 'f-001'
     mock_folder_service.delete.assert_called_once_with('f-001')
     mock_document_service.save.assert_called_once()
+
+# *** tests: RFP-008 visibility
+
+# ** test: set_folder_visibility_success
+def test_set_folder_visibility_success(mock_folder_service, sample_folder):
+    '''SetFolderVisibility updates access fields and leaves name, parent, and path alone.'''
+
+    mock_folder_service.get.return_value = sample_folder
+
+    result = DomainEvent.handle(
+        SetFolderVisibility,
+        dependencies={'folder_service': mock_folder_service},
+        id='f-001',
+        visibility='private',
+        owner_id='owner-1',
+    )
+
+    assert result.visibility == 'private'
+    assert result.owner_id == 'owner-1'
+    assert result.name == 'Projects'
+    assert result.path == '/Projects'
+    assert result.parent_id is None
+    assert not hasattr(result, 'updated_at') or 'updated_at' not in result.model_fields
+    mock_folder_service.save.assert_called_once()
+
+# ** test: set_folder_visibility_not_found
+def test_set_folder_visibility_not_found(mock_folder_service):
+    '''A missing folder raises the existing not-found error and is not created.'''
+
+    mock_folder_service.get.return_value = None
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            SetFolderVisibility,
+            dependencies={'folder_service': mock_folder_service},
+            id='missing',
+            visibility='restricted',
+        )
+    assert exc_info.value.error_code == 'KB_FOLDER_NOT_FOUND'
+    mock_folder_service.save.assert_not_called()
+
+# ** test: set_folder_visibility_rejects_other_case
+def test_set_folder_visibility_rejects_other_case(mock_folder_service):
+    '''A different case is rejected as KB_INVALID_VISIBILITY.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        DomainEvent.handle(
+            SetFolderVisibility,
+            dependencies={'folder_service': mock_folder_service},
+            id='f-001',
+            visibility='Private',
+        )
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
+
+# ** test: add_folder_visibility
+def test_add_folder_visibility(mock_folder_service):
+    '''AddFolder accepts visibility and owner, and an omitted visibility reads as public.'''
+
+    mock_folder_service.exists.return_value = False
+
+    created = DomainEvent.handle(
+        AddFolder,
+        dependencies={'folder_service': mock_folder_service},
+        name='Secret',
+        visibility='private',
+        owner_id='owner-3',
+    )
+    assert created.visibility == 'private'
+    assert created.owner_id == 'owner-3'
+
+    plain = DomainEvent.handle(
+        AddFolder,
+        dependencies={'folder_service': mock_folder_service},
+        name='Open',
+    )
+    assert plain.visibility == 'public'
+    assert plain.owner_id is None
+
+# ** test: list_folder_contents_passes_access_filters
+def test_list_folder_contents_passes_access_filters(mock_folder_service, mock_document_service):
+    '''ListFolderContents passes visibility and owner to both child lists.'''
+
+    mock_folder_service.exists.return_value = True
+    mock_folder_service.list.return_value = []
+    mock_document_service.list.return_value = []
+
+    DomainEvent.handle(
+        ListFolderContents,
+        dependencies={
+            'folder_service': mock_folder_service,
+            'document_service': mock_document_service,
+        },
+        folder_id='f-001',
+        visibility='public',
+        owner_id='owner-1',
+    )
+
+    mock_folder_service.list.assert_called_once_with(
+        parent_id='f-001',
+        visibility='public',
+        owner_id='owner-1',
+    )
+    mock_document_service.list.assert_called_once_with(
+        folder_id='f-001',
+        visibility='public',
+        owner_id='owner-1',
+    )

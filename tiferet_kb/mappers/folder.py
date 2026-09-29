@@ -3,7 +3,7 @@
 # *** imports
 
 # ** core
-from typing import Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict, List
 
 # ** app
 from tiferet.mappers import Aggregate
@@ -61,6 +61,33 @@ class FolderAggregate(Folder, Aggregate):
         # Update the path.
         self.path = path
 
+    # * method: set_visibility
+    def set_visibility(self, visibility: str) -> None:
+        '''
+        Set the folder visibility label.
+
+        :param visibility: The visibility token (public, private, or restricted).
+        :type visibility: str
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the visibility. Folders have no updated_at.
+        self.visibility = visibility
+
+    # * method: set_owner
+    def set_owner(self, owner_id: str | None) -> None:
+        '''
+        Set or clear the folder owner.
+
+        :param owner_id: The opaque owner identifier, or None to clear.
+        :type owner_id: str | None
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the owner. Folders have no updated_at.
+        self.owner_id = owner_id
 
 # ** mapper: folder_node_object
 class FolderNodeObject(Folder, NodeObject):
@@ -76,6 +103,11 @@ class FolderNodeObject(Folder, NodeObject):
         'to_model': {},
         'to_h5.attrs': {'by_alias': True, 'exclude': {'id'}},
     }
+
+    # * attribute: _NULLABLE_FIELDS
+    _NULLABLE_FIELDS: ClassVar[List[str]] = [
+        'owner_id',
+    ]
 
     # * method: map
     def map(self, **overrides) -> FolderAggregate:

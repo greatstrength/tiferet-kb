@@ -24,14 +24,12 @@ def test_document_auto_generates_id_and_timestamps():
     assert doc.created_at is not None
     assert doc.updated_at is not None
 
-
 # ** test: document_preserves_explicit_id
 def test_document_preserves_explicit_id():
     '''Test that an explicit id is preserved.'''
 
     doc = Document(id='my-custom-id', title='Test Doc')
     assert doc.id == 'my-custom-id'
-
 
 # ** test: document_optional_fields_default_none
 def test_document_optional_fields_default_none():
@@ -43,7 +41,6 @@ def test_document_optional_fields_default_none():
     assert doc.folder_id is None
     assert doc.sections == []
 
-
 # ** test: document_get_section
 def test_document_get_section():
     '''Test get_section returns the correct section by position.'''
@@ -53,7 +50,6 @@ def test_document_get_section():
     assert doc.get_section(0) is not None
     assert doc.get_section(0).title == 'Intro'
     assert doc.get_section(1) is None
-
 
 # ** test: document_section_count
 def test_document_section_count():
@@ -66,7 +62,6 @@ def test_document_section_count():
     doc2 = Document(title='Test Doc', sections=[section])
     assert doc2.section_count() == 1
 
-
 # ** test: document_section_auto_generates_defaults
 def test_document_section_auto_generates_defaults():
     '''Test that DocumentSection auto-generates id and timestamps.'''
@@ -77,7 +72,6 @@ def test_document_section_auto_generates_defaults():
     assert section.heading_level == 2
     assert section.content_type == 'markdown'
     assert section.paragraphs == []
-
 
 # ** test: document_rejects_extra_fields
 def test_document_rejects_extra_fields():
@@ -164,3 +158,32 @@ def test_section_empty_content_renders_empty():
     assert missing.content == ''
     assert empty.content == ''
     assert render_section(empty) == ''
+
+# ** test: document_visibility_defaults_public
+def test_document_visibility_defaults_public():
+    '''A document with no visibility reads as public and has no owner.'''
+
+    doc = Document(title='Test Doc')
+    assert doc.visibility == 'public'
+    assert doc.owner_id is None
+
+# ** test: document_blank_visibility_reads_public
+def test_document_blank_visibility_reads_public():
+    '''Empty or whitespace visibility and owner read as public and absent.'''
+
+    doc = Document.model_validate({
+        'title': 'Test Doc',
+        'visibility': '',
+        'owner_id': '   ',
+    })
+    assert doc.visibility == 'public'
+    assert doc.owner_id is None
+
+# ** test: document_stores_visibility_and_owner
+def test_document_stores_visibility_and_owner():
+    '''An explicit visibility and owner are kept, and visibility is never absent.'''
+
+    doc = Document(title='Test Doc', visibility='private', owner_id='owner-1')
+    assert doc.visibility == 'private'
+    assert doc.owner_id == 'owner-1'
+    assert doc.visibility is not None

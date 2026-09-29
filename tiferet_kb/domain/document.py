@@ -413,6 +413,18 @@ class Document(DomainObject):
         description='Document status: draft, published, or archived.',
     )
 
+    # * attribute: visibility
+    visibility: str = Field(
+        default='public',
+        description='Access label: public, private, or restricted. Absent reads as public.',
+    )
+
+    # * attribute: owner_id
+    owner_id: Optional[str] = Field(
+        default=None,
+        description='Opaque owner identifier supplied by the caller, or None when absent.',
+    )
+
     # * attribute: created_at
     created_at: str = Field(
         ...,
@@ -442,7 +454,7 @@ class Document(DomainObject):
     @classmethod
     def _derive_defaults(cls, data: Any) -> Any:
         '''
-        Derive default values for id, status, created_at, and updated_at when absent.
+        Derive default values for id, status, visibility, created_at, and updated_at when absent.
 
         :param data: The raw input data.
         :type data: Any
@@ -462,6 +474,16 @@ class Document(DomainObject):
         # Default status to 'draft'.
         if not data.get('status'):
             data['status'] = 'draft'
+
+        # Missing or blank visibility reads as public. A stored token is left unchanged.
+        visibility = data.get('visibility')
+        if not isinstance(visibility, str) or not visibility.strip():
+            data['visibility'] = 'public'
+
+        # Missing, empty, or whitespace-only owner reads as absent.
+        owner_id = data.get('owner_id')
+        if not isinstance(owner_id, str) or not owner_id.strip():
+            data['owner_id'] = None
 
         # Set timestamps if not provided.
         now = datetime.now(timezone.utc).isoformat()

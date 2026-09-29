@@ -54,6 +54,8 @@ class DocumentService(Service):
             property_name: Optional[str] = None,
             property_value: Any = None,
             property_value_type: Optional[str] = None,
+            visibility: Optional[str] = None,
+            owner_id: Optional[str] = None,
         ) -> List:
         '''
         List documents with optional filters.
@@ -79,6 +81,12 @@ class DocumentService(Service):
         :type property_value: Any
         :param property_value_type: Optional declared type of the property value.
         :type property_value_type: str | None
+        :param visibility: Optional visibility to filter by. ``public`` includes
+            stored public, empty, and absent. Omitted does not constrain the field.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by. An absent owner
+            matches no owner filter. Omitted does not constrain the field.
+        :type owner_id: str | None
         :return: A list of document aggregates.
         :rtype: List
         '''
