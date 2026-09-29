@@ -12,6 +12,7 @@ from tiferet.events import DomainEvent
 from .. import a
 from ..domain.document import Document, DocumentProperty, DocumentSection
 from ..interfaces.document import DocumentService
+from ..interfaces.tag import TagService
 from ..mappers.document import (
     DocumentAggregate,
     DocumentPropertyTableObject,
@@ -166,22 +167,33 @@ class GetDocument(DomainEvent):
 class ListDocuments(DomainEvent):
     '''
     Event to list documents with optional filters.
+
+    ``tag_id`` is association membership, composed here. It is not a column
+    on the document header. Omitted or empty means no tag condition.
     '''
 
     # * attribute: document_service
     document_service: DocumentService
 
+    # * attribute: tag_service
+    tag_service: TagService
+
     # * init
-    def __init__(self, document_service: DocumentService):
+    def __init__(self, document_service: DocumentService, tag_service: TagService):
         '''
         Initialize the ListDocuments event.
 
-        :param document_service: The document service for listing.
+        :param document_service: The document service for header filters.
         :type document_service: DocumentService
+        :param tag_service: The tag service for association membership.
+        :type tag_service: TagService
         '''
 
         # Set the document service dependency.
         self.document_service = document_service
+
+        # Set the tag service dependency.
+        self.tag_service = tag_service
 
     # * method: execute
     def execute(self,
@@ -193,13 +205,16 @@ class ListDocuments(DomainEvent):
             property_name: str | None = None,
             property_value: Any = None,
             property_value_type: str | None = None,
+            tag_id: str | None = None,
             **kwargs,
         ) -> List[Document]:
         '''
         List documents with optional filters.
 
         Property arguments are always forwarded, including their defaults.
-        This event does not pass ``include_sections``.
+        This event does not pass ``include_sections``. When ``tag_id`` is
+        set, the result is further limited to documents that carry that tag.
+        A tag id that matches nothing yields an empty list, not an error.
 
         :param folder_id: Optional folder identifier to filter by.
         :type folder_id: str | None
@@ -217,9 +232,11 @@ class ListDocuments(DomainEvent):
         :type property_value: Any
         :param property_value_type: Optional declared type of the property value.
         :type property_value_type: str | None
+        :param tag_id: Optional tag identifier. Empty means no tag condition.
+        :type tag_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
-        :return: A list of documents.
+        :return: A list of document headers.
         :rtype: List[Document]
         '''
 
@@ -237,8 +254,9 @@ class ListDocuments(DomainEvent):
                 value_type=property_value_type,
             )
 
-        # Always forward title and the property arguments, including defaults.
-        return self.document_service.list(
+        # Header filters stay on the document service. Always forward title
+        # and the property arguments. Do not pass tag_id.
+        documents = self.document_service.list(
             folder_id=folder_id,
             category_id=category_id,
             status=status,
@@ -248,6 +266,14 @@ class ListDocuments(DomainEvent):
             property_value=property_value,
             property_value_type=property_value_type,
         )
+
+        # An omitted or empty tag id is no tag condition.
+        if not tag_id:
+            return documents
+
+        # Intersect headers with association membership. One tag id per call.
+        carrier_ids = set(self.tag_service.list_document_ids(tag_id))
+        return [document for document in documents if document.id in carrier_ids]
 
 # ** event: update_document
 class UpdateDocument(DomainEvent):
@@ -352,28 +378,41 @@ class UpdateDocument(DomainEvent):
 class RemoveDocument(DomainEvent):
     '''
     Event to remove a document by ID (idempotent, cascading sections).
+
+    Clears that document's tag associations first, so a deleted document
+    cannot leave ``RemoveTag`` refusing with nothing left to untag.
     '''
 
     # * attribute: document_service
     document_service: DocumentService
 
+    # * attribute: tag_service
+    tag_service: TagService
+
     # * init
-    def __init__(self, document_service: DocumentService):
+    def __init__(self, document_service: DocumentService, tag_service: TagService):
         '''
         Initialize the RemoveDocument event.
 
         :param document_service: The document service for deletion.
         :type document_service: DocumentService
+        :param tag_service: The tag service for association cleanup.
+        :type tag_service: TagService
         '''
 
         # Set the document service dependency.
         self.document_service = document_service
+
+        # Set the tag service dependency.
+        self.tag_service = tag_service
 
     # * method: execute
     @DomainEvent.parameters_required(['id'])
     def execute(self, id: str, **kwargs) -> str:
         '''
         Remove a document and all its sections by ID.
+
+        Association cleanup is idempotent when the document carries no tags.
 
         :param id: The document identifier.
         :type id: str
@@ -382,6 +421,9 @@ class RemoveDocument(DomainEvent):
         :return: The removed document ID.
         :rtype: str
         '''
+
+        # Drop associations before the document, so a retry cannot strand a tag.
+        self.tag_service.clear_document(id)
 
         # Delete the document (cascades to sections, idempotent).
         self.document_service.delete(id)

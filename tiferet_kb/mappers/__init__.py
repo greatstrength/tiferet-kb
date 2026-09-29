@@ -30,3 +30,8 @@ from .folder import (
     FolderAggregate,
     FolderNodeObject,
 )
+from .tag import (
+    TagAggregate,
+    TagNodeObject,
+    DocumentTagTableObject,
+)

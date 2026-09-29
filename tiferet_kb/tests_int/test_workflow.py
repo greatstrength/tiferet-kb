@@ -20,6 +20,7 @@ from ..repos.category import CategoryH5Repository
 from ..repos.document import DocumentH5Repository
 from ..repos.template import TemplateH5Repository
 from ..repos.folder import FolderH5Repository
+from ..repos.tag import TagH5Repository
 from ..mappers import CategoryAggregate
 from ..events import (
     AddCategory,
@@ -76,10 +77,16 @@ def folder_repo(h5_file) -> FolderH5Repository:
     '''Folder repository.'''
     return FolderH5Repository(h5_file=h5_file)
 
+# ** fixture: tag_repo
+@pytest.fixture
+def tag_repo(h5_file) -> TagH5Repository:
+    '''Tag repository.'''
+    return TagH5Repository(h5_file=h5_file)
+
 # *** tests
 
 # ** test_int: full_workflow
-def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo):
+def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo, tag_repo):
     '''
     End-to-end test: category → template → apply → folder → move → cleanup.
     '''
@@ -209,7 +216,10 @@ def test_int_full_workflow(category_repo, doc_repo, template_repo, folder_repo):
     # --- Step 9: Delete the document (cascades sections) ---
     DomainEvent.handle(
         RemoveDocument,
-        dependencies={'document_service': doc_repo},
+        dependencies={
+            'document_service': doc_repo,
+            'tag_service': tag_repo,
+        },
         id=document.id,
     )
     assert doc_repo.exists(document.id) is False

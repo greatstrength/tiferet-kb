@@ -48,3 +48,13 @@ from .markdown import (
     ImportMarkdownDocument,
     ExportDocumentMarkdown,
 )
+from .tag import (
+    AddTag,
+    GetTag,
+    ListTags,
+    UpdateTag,
+    RemoveTag,
+    TagDocument,
+    UntagDocument,
+    ListDocumentTags,
+)
