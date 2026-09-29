@@ -9,6 +9,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 # ** app
+from tiferet.assets import TiferetError
 from tiferet_h5.repos import H5Repository
 
 from ..interfaces.document import DocumentService
@@ -426,9 +427,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 # Validate dimension consistency.
                 if existing_embs.shape[0] > 0 and existing_embs.shape[1] != new_vec.shape[0]:
                     from ..assets import constants as const
-                    from tiferet.events import RaiseError
-                    RaiseError.execute(
-                        error_code=const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
+                    TiferetError.raise_error(
+                        const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
                         expected=int(existing_embs.shape[1]),
                         actual=int(new_vec.shape[0]),
                     )

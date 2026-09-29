@@ -7,6 +7,7 @@ import pytest
 
 # ** app
 from tiferet.assets import TiferetError
+from tiferet.domain import ModelError
 from tiferet.mappers import Aggregate
 from tiferet_h5.mappers import NodeObject
 
@@ -138,8 +139,9 @@ class AggregateTestBase(MapperAssertions):
         '''
 
         # If an error is expected, verify the correct error code is raised.
+        # tiferet 2.1.1 raises ModelError (not a TiferetError) for model defects.
         if expect_error_code:
-            with pytest.raises(TiferetError) as exc_info:
+            with pytest.raises((TiferetError, ModelError)) as exc_info:
                 aggregate.set_attribute(attr, value)
             assert exc_info.value.error_code == expect_error_code
 
