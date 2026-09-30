@@ -24,6 +24,26 @@ errors:
     message:
       - lang: en_US
         text: 'Invalid document attribute: {attribute}'
+  kb_invalid_property_name:
+    name: Invalid Property Name
+    message:
+      - lang: en_US
+        text: 'Invalid property name: {name}'
+  kb_invalid_property_type:
+    name: Invalid Property Type
+    message:
+      - lang: en_US
+        text: 'Invalid property value type: {value_type}. Must be string, number, or boolean'
+  kb_invalid_property_value:
+    name: Invalid Property Value
+    message:
+      - lang: en_US
+        text: 'Property value does not match value type {value_type}'
+  kb_invalid_property_filter:
+    name: Invalid Property Filter
+    message:
+      - lang: en_US
+        text: 'A property filter requires name, value, and value type'
   kb_invalid_section_attribute:
     name: Invalid Section Attribute
     message:

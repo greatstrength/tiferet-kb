@@ -10,7 +10,7 @@ from unittest import mock
 from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
-from ...assets import constants as const
+from ...assets import errors as err
 from ...interfaces.document import DocumentService
 from ...mappers.document import DocumentSectionAggregate
 from ..embedding import EmbedDocumentSections, SearchSimilarSections, RemoveEmbedding
@@ -95,7 +95,7 @@ def test_embed_document_sections_document_not_found(mock_document_service):
             embeddings={'sec-001': [0.1]},
             model_name='test-model',
         )
-    assert exc_info.value.error_code == const.KB_DOCUMENT_NOT_FOUND_ID
+    assert exc_info.value.error_code == err.KB_DOCUMENT_NOT_FOUND_ID
 
 
 # ** test: embed_document_sections_section_not_found
@@ -117,7 +117,7 @@ def test_embed_document_sections_section_not_found(mock_document_service, sample
             embeddings={'nonexistent': [0.1]},
             model_name='test-model',
         )
-    assert exc_info.value.error_code == const.KB_DOCUMENT_SECTION_NOT_FOUND_ID
+    assert exc_info.value.error_code == err.KB_DOCUMENT_SECTION_NOT_FOUND_ID
 
 
 # ** test: search_similar_sections_success
@@ -240,4 +240,4 @@ def test_remove_embedding_not_embedded(mock_document_service):
             dependencies={'document_service': mock_document_service},
             section_id='sec-999',
         )
-    assert exc_info.value.error_code == const.KB_SECTION_NOT_EMBEDDED_ID
+    assert exc_info.value.error_code == err.KB_SECTION_NOT_EMBEDDED_ID

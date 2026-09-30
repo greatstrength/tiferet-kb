@@ -3,6 +3,7 @@
 # *** imports
 
 # ** core
+import math
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 from uuid import uuid4
@@ -11,9 +12,19 @@ from uuid import uuid4
 from pydantic import Field, model_validator
 
 # ** app
-from tiferet.domain import DomainObject
+from tiferet.domain import DomainObject, ModelError
 
+from ..assets import errors as err
 from .segment import Paragraph
+
+# *** constants
+
+# ** constant: property_value_types
+PROPERTY_VALUE_TYPES = (
+    'string',
+    'number',
+    'boolean',
+)
 
 # *** models
 
@@ -151,6 +162,210 @@ class DocumentSection(DomainObject):
         # Return the augmented data.
         return data
 
+# ** model: document_property
+class DocumentProperty(DomainObject):
+    '''
+    A named typed value on a document, outside the fixed header columns.
+
+    One name has one value. The type is chosen by the caller and is not
+    inferred. A property does not alias title, status, category, template,
+    or folder, and it is not a tag, a fact type, or a schema entry.
+    '''
+
+    # * attribute: document_id
+    document_id: str = Field(
+        ...,
+        description='UUID of the document this property belongs to.',
+    )
+
+    # * attribute: name
+    name: str = Field(
+        ...,
+        description='Stored property name. Stripped once; case and internal spaces stay.',
+    )
+
+    # * attribute: value
+    value: Any = Field(
+        ...,
+        description='The property value. A string, a finite number, or a boolean.',
+    )
+
+    # * attribute: value_type
+    value_type: str = Field(
+        ...,
+        description='Declared type: string, number, or boolean. Not inferred.',
+    )
+
+    # * method: _normalize_name (validator)
+    @model_validator(mode='before')
+    @classmethod
+    def _normalize_name(cls, data: Any) -> Any:
+        '''
+        Strip the property name once before field validation.
+
+        :param data: The raw input data.
+        :type data: Any
+        :return: The input data with a stripped name when the name is a string.
+        :rtype: Any
+        '''
+
+        # Leave non-mapping input for Pydantic to handle.
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+
+        # Strip a string name once. Internal spaces and case stay.
+        name = data.get('name')
+        if isinstance(name, str):
+            data['name'] = name.strip()
+
+        # Return the canonicalized input.
+        return data
+
+    # * method: _validate_property (validator)
+    @model_validator(mode='after')
+    def _validate_property(self) -> 'DocumentProperty':
+        '''
+        Refuse a property whose name, type, or value is not storable.
+
+        :return: The validated property.
+        :rtype: DocumentProperty
+        '''
+
+        # Refuse an invalid property as a model defect, not a domain outcome.
+        type(self).rejection(self.name, self.value, self.value_type)
+
+        # Return the valid property.
+        return self
+
+    # * method: value_matches
+    @classmethod
+    def value_matches(cls, value: Any, value_type: str) -> bool:
+        '''
+        Return whether ``value`` is a legal instance of ``value_type``.
+
+        A boolean is not a number. A number is not a boolean. A string is
+        not coerced, and ``''`` is a string. ``None`` is never a value.
+
+        :param value: The candidate value.
+        :type value: Any
+        :param value_type: The declared type.
+        :type value_type: str
+        :return: True when the value matches the type.
+        :rtype: bool
+        '''
+
+        # None is not a value. Clearing a field is remove, not a null write.
+        if value is None:
+            return False
+
+        # A string is a str, including the empty string. It is not stripped.
+        if value_type == 'string':
+            return isinstance(value, str)
+
+        # Check bool before int. bool is a subclass of int.
+        if value_type == 'boolean':
+            return isinstance(value, bool)
+
+        # A number is a finite int or float, never a bool.
+        if value_type == 'number':
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return False
+            try:
+                return math.isfinite(float(value))
+            except OverflowError:
+                return False
+
+        # An unknown type does not match.
+        return False
+
+    # * method: rejection
+    @classmethod
+    def rejection(cls, name: Any, value: Any, value_type: Any) -> None:
+        '''
+        Raise ModelError when a property name, type, or value cannot be stored.
+
+        The name is judged after one strip. The type is not inferred from the value.
+
+        :param name: The candidate name.
+        :type name: Any
+        :param value: The candidate value.
+        :type value: Any
+        :param value_type: The candidate type.
+        :type value_type: Any
+        :return: None
+        :rtype: None
+        '''
+
+        # Empty or non-string names are invalid. The stored form is the strip.
+        if not isinstance(name, str) or not name.strip():
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_NAME_ID,
+                message='Invalid property name.',
+                name=name,
+            )
+
+        # The caller must pass string, number, or boolean. Nothing else.
+        if value_type not in PROPERTY_VALUE_TYPES:
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_TYPE_ID,
+                message='Invalid property value type.',
+                value_type=value_type,
+            )
+
+        # The value must match the declared type, with no cross-type coercion.
+        if not cls.value_matches(value, value_type):
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_VALUE_ID,
+                message='Property value does not match the declared type.',
+                value_type=value_type,
+            )
+
+    # * method: filter_rejection
+    @classmethod
+    def filter_rejection(cls,
+            name: Any,
+            value: Any,
+            value_type: Any,
+        ) -> None:
+        '''
+        Raise ModelError for an incomplete or invalid property filter.
+
+        All three arguments omitted (``None``) is no filter. ``False``, ``0``,
+        and ``''`` are real values, not omissions. If any argument is set, all
+        three are required, and the same type rules as a write apply.
+
+        :param name: The filter name, or None when omitted.
+        :type name: Any
+        :param value: The filter value, or None when omitted.
+        :type value: Any
+        :param value_type: The filter type, or None when omitted.
+        :type value_type: Any
+        :return: None
+        :rtype: None
+        '''
+
+        # Omission is None on every argument, not a false or empty value.
+        supplied = (
+            name is not None,
+            value is not None,
+            value_type is not None,
+        )
+        if not any(supplied):
+            return
+
+        # A partial triple is not a filter. There is no name-only match.
+        if not all(supplied):
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_FILTER_ID,
+                message='A property filter requires name, value, and value type.',
+                name=name,
+                value_type=value_type,
+            )
+
+        # A complete triple uses the write rules.
+        cls.rejection(name, value, value_type)
+
 # ** model: document
 class Document(DomainObject):
     '''
@@ -158,7 +373,8 @@ class Document(DomainObject):
 
     Documents are the primary content objects in the knowledge base,
     composed of ordered sections and optionally classified by category,
-    sourced from a template, and placed within a folder.
+    sourced from a template, and placed within a folder. A property bag
+    holds caller-named typed values that are not header columns.
     '''
 
     # * attribute: id
@@ -213,6 +429,12 @@ class Document(DomainObject):
     sections: List[DocumentSection] = Field(
         default_factory=list,
         description='Ordered list of document sections, populated by the service layer.',
+    )
+
+    # * attribute: properties
+    properties: List[DocumentProperty] = Field(
+        default_factory=list,
+        description='Property bag sorted by name when loaded. Empty is not a claim that the bag is empty unless it was loaded.',
     )
 
     # * method: _derive_defaults (validator)

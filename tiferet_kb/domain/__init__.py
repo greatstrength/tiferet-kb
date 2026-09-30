@@ -4,7 +4,7 @@
 
 # ** app
 from .category import Category
-from .document import Document, DocumentSection
+from .document import Document, DocumentProperty, DocumentSection
 from .embedding import EmbeddingRecord
 from .segment import TextSegment, Paragraph
 from .template import Template, TemplateSection

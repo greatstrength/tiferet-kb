@@ -14,7 +14,7 @@ from pydantic import Field
 from tiferet.mappers import Aggregate
 from tiferet_h5.mappers import NodeObject, TableObject
 
-from ..domain.document import Document, DocumentSection
+from ..domain.document import Document, DocumentProperty, DocumentSection
 from ..domain.segment import Paragraph
 
 # *** mappers
@@ -253,8 +253,8 @@ class DocumentTableObject(TableObject):
         :rtype: DocumentTableObject
         '''
 
-        # Dump the model, excluding sections (stored separately), and replace None with ''.
-        data = document.model_dump(by_alias=False, exclude={'sections'})
+        # Dump the header only. Sections and properties are stored apart from this row.
+        data = document.model_dump(by_alias=False, exclude={'sections', 'properties'})
         for field in ('category_id', 'template_id', 'folder_id'):
             if data.get(field) is None:
                 data[field] = ''
@@ -351,4 +351,104 @@ class DocumentSectionNodeObject(NodeObject):
         data.update(overrides)
 
         # Construct and return the node object.
+        return cls.model_validate(data)
+
+# ** mapper: document_property_table_object
+class DocumentPropertyTableObject(TableObject):
+    '''
+    An HDF5 table-row representation of one document property.
+
+    Stored as rows in ``/kb/documents/document_properties``, sibling to the
+    header table. One value column per type so a read does not guess the
+    type from text. Only the column named by ``value_type`` is meaningful.
+    '''
+
+    # * attribute: document_id
+    document_id: str = Field(default='', description='Parent document UUID.')
+
+    # * attribute: name
+    name: str = Field(default='', description='Stored property name.')
+
+    # * attribute: value_type
+    value_type: str = Field(default='', description='Declared value type.')
+
+    # * attribute: value_string
+    value_string: str = Field(default='', description='String value. Meaningful only when value_type is string.')
+
+    # * attribute: value_number
+    value_number: float = Field(default=0.0, description='Number value. Meaningful only when value_type is number.')
+
+    # * attribute: value_boolean
+    value_boolean: bool = Field(default=False, description='Boolean value. Meaningful only when value_type is boolean.')
+
+    # * attribute: _H5_TYPES
+    _H5_TYPES: ClassVar[Dict[str, Any]] = {
+        'document_id': tables.StringCol(64),
+        'name': tables.StringCol(1024),
+        'value_type': tables.StringCol(16),
+        'value_string': tables.StringCol(4096),
+        'value_number': tables.Float64Col(),
+        'value_boolean': tables.BoolCol(),
+    }
+
+    # * method: to_property
+    def to_property(self) -> DocumentProperty:
+        '''
+        Rebuild the domain property from the column that matches ``value_type``.
+
+        :return: The property, with no cross-type coercion.
+        :rtype: DocumentProperty
+        '''
+
+        # Read only the column the stored type names.
+        if self.value_type == 'number':
+            value = self.value_number
+        elif self.value_type == 'boolean':
+            value = self.value_boolean
+        else:
+            value = self.value_string
+
+        # Return the domain property.
+        return DocumentProperty(
+            document_id=self.document_id,
+            name=self.name,
+            value=value,
+            value_type=self.value_type,
+        )
+
+    # * method: from_model
+    @classmethod
+    def from_model(cls, prop: DocumentProperty, **overrides) -> 'DocumentPropertyTableObject':
+        '''
+        Create a table row from a document property.
+
+        The unused typed columns stay at their empty defaults so a later read
+        cannot mistake them for the stored value.
+
+        :param prop: The property to store.
+        :type prop: DocumentProperty
+        :param overrides: Additional keyword arguments.
+        :type overrides: dict
+        :return: A new table object.
+        :rtype: DocumentPropertyTableObject
+        '''
+
+        # Start from empty typed columns, then fill the one that matches.
+        data = {
+            'document_id': prop.document_id,
+            'name': prop.name,
+            'value_type': prop.value_type,
+            'value_string': '',
+            'value_number': 0.0,
+            'value_boolean': False,
+        }
+        if prop.value_type == 'string':
+            data['value_string'] = prop.value
+        elif prop.value_type == 'number':
+            data['value_number'] = float(prop.value)
+        else:
+            data['value_boolean'] = bool(prop.value)
+        data.update(overrides)
+
+        # Construct and return the table object.
         return cls.model_validate(data)

@@ -3,21 +3,24 @@
 # *** imports
 
 # ** core
-from typing import Dict, List, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 # ** infra
 import numpy as np
 
 # ** app
-from tiferet.assets import TiferetError
+from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import H5Repository
 
 from ..interfaces.document import DocumentService
+from ..domain.document import DocumentProperty
 from ..domain.segment import TextSegment, Paragraph
 from ..mappers.document import (
     DocumentAggregate,
     DocumentSectionAggregate,
     DocumentTableObject,
+    DocumentPropertyTableObject,
     DocumentSectionNodeObject,
 )
 from ..mappers.segment import HybridSegmentTableObject
@@ -31,11 +34,26 @@ DOCUMENTS_GROUP = '/kb/documents'
 # ** constant: documents_table
 DOCUMENTS_TABLE = '/kb/documents/documents'
 
+# ** constant: document_properties_table
+DOCUMENT_PROPERTIES_TABLE = '/kb/documents/document_properties'
+
 # ** constant: embeddings_array
 EMBEDDINGS_ARRAY = '/kb/documents/section_embeddings'
 
 # ** constant: embedding_ids_array
 EMBEDDING_IDS_ARRAY = '/kb/documents/section_embedding_ids'
+
+# ** constant: h5_embedding_dimension_mismatch_id
+H5_EMBEDDING_DIMENSION_MISMATCH_ID = 'H5_EMBEDDING_DIMENSION_MISMATCH'
+
+# ** constant: h5_document_not_found_id
+H5_DOCUMENT_NOT_FOUND_ID = 'H5_DOCUMENT_NOT_FOUND'
+
+# ** constant: h5_property_name_too_long_id
+H5_PROPERTY_NAME_TOO_LONG_ID = 'H5_PROPERTY_NAME_TOO_LONG'
+
+# ** constant: h5_property_value_too_long_id
+H5_PROPERTY_VALUE_TOO_LONG_ID = 'H5_PROPERTY_VALUE_TOO_LONG'
 
 # *** repos
 
@@ -45,7 +63,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
     HDF5-backed repository for knowledge base documents.
 
     Documents are stored as rows in ``/kb/documents/documents`` via
-    ``DocumentTableObject``.  Each section is a group node at
+    ``DocumentTableObject``.  Properties are rows in the sibling table
+    ``/kb/documents/document_properties``.  Each section is a group node at
     ``/kb/documents/<document_id>/sections/<section_id>`` whose attributes
     come from ``DocumentSectionNodeObject`` and which holds a nested
     ``segments`` table (``HybridSegmentTableObject``).  Embeddings are two
@@ -133,8 +152,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Map the document header.
             doc = DocumentTableObject.from_row(doc_rows[0]).map()
 
-            # Load sections from group nodes.
+            # Load sections from group nodes and the property bag.
             doc.sections = self._read_sections(h5, id)
+            doc.properties = self._read_properties(h5, id)
 
         # Return the assembled document.
         return doc
@@ -146,9 +166,19 @@ class DocumentH5Repository(H5Repository, DocumentService):
             status: Optional[str] = None,
             title: Optional[str] = None,
             include_sections: bool = False,
+            include_properties: bool = False,
+            property_name: Optional[str] = None,
+            property_value: Any = None,
+            property_value_type: Optional[str] = None,
         ) -> List[DocumentAggregate]:
         '''
         List documents with optional filters.
+
+        Header filters use truthiness. Property filters do not: ``False``,
+        ``0``, and ``''`` are real values, and omission is ``None`` on all
+        three property arguments. The property condition AND-s with the
+        header filters. It does not load the bag unless ``include_properties``
+        is true, and it does not scan section text.
 
         :param folder_id: Optional folder identifier to filter by.
         :type folder_id: str | None
@@ -160,9 +190,20 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :type title: str | None
         :param include_sections: If True, populate sections for each document.
         :type include_sections: bool
+        :param include_properties: If True, populate each document's property bag.
+        :type include_properties: bool
+        :param property_name: Optional property name to match. Stripped once.
+        :type property_name: str | None
+        :param property_value: Optional property value to match exactly.
+        :type property_value: Any
+        :param property_value_type: Optional declared type of the property value.
+        :type property_value_type: str | None
         :return: A list of document aggregates.
         :rtype: List[DocumentAggregate]
         '''
+
+        # Reject a partial or ill-typed property filter before opening the file.
+        self._raise_property_filter(property_name, property_value, property_value_type)
 
         with self.client() as h5:
 
@@ -170,7 +211,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if not h5.node_exists(DOCUMENTS_TABLE):
                 return []
 
-            # Build the condition from filters. Title is bound, not interpolated.
+            # Header filters use truthiness. Title is bound, not interpolated.
             conditions = []
             condvars = {}
             if folder_id:
@@ -194,13 +235,29 @@ class DocumentH5Repository(H5Repository, DocumentService):
             else:
                 rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
 
-            # Map each row to an aggregate.
+            # Map each row to an aggregate. properties stays [] until loaded.
             docs = [DocumentTableObject.from_row(r).map() for r in rows]
+
+            # Intersect with one exact property match. A missing table matches nothing.
+            if property_name is not None:
+                matched_ids = self._matching_property_ids(
+                    h5,
+                    property_name.strip(),
+                    property_value,
+                    property_value_type,
+                )
+                docs = [doc for doc in docs if doc.id in matched_ids]
 
             # Optionally load sections for each document.
             if include_sections:
                 for doc in docs:
                     doc.sections = self._read_sections(h5, doc.id)
+
+            # Optionally load bags. The flag is independent of the filter.
+            if include_properties:
+                bags = self._property_bags(h5)
+                for doc in docs:
+                    doc.properties = bags.get(doc.id, [])
 
         # Return the document list.
         return docs
@@ -269,6 +326,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if h5.node_exists(DOCUMENTS_TABLE):
                 h5.assert_schema(DOCUMENTS_TABLE, DocumentTableObject)
 
+            # Verify the property table when it exists. A missing table is an empty bag.
+            if h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+                h5.assert_schema(DOCUMENT_PROPERTIES_TABLE, DocumentPropertyTableObject)
+
             # Verify the section's segments table when a path was given and it exists.
             if section_path:
                 segments_path = f'{section_path}/segments'
@@ -317,6 +378,13 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Remove the document row if the table exists.
             if h5.node_exists(DOCUMENTS_TABLE):
                 h5.remove_rows(DOCUMENTS_TABLE, f'(id == b"{id}")')
+
+            # Cascade: remove this document's property rows. Leave the table.
+            if h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+                h5.remove_rows(
+                    DOCUMENT_PROPERTIES_TABLE,
+                    KBTableRepository.string_equals('document_id', id),
+                )
 
             # Cascade: remove all section groups for this document.
             self.node_repo.remove_node(h5, f'{DOCUMENTS_GROUP}/{id}', recursive=True)
@@ -498,9 +566,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
                 # Validate dimension consistency.
                 if existing_embs.shape[0] > 0 and existing_embs.shape[1] != new_vec.shape[0]:
-                    from ..assets import constants as const
-                    TiferetError.raise_error(
-                        const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
+                    ServiceError.raise_for(
+                        self,
+                        H5_EMBEDDING_DIMENSION_MISMATCH_ID,
+                        message='Embedding dimension does not match the stored vectors.',
                         expected=int(existing_embs.shape[1]),
                         actual=int(new_vec.shape[0]),
                     )
@@ -931,3 +1000,342 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 section_ids.update(root._v_children.keys())
 
         return section_ids
+
+    # * method: set_property
+    def set_property(self,
+            document_id: str,
+            name: str,
+            value: Any,
+            value_type: str,
+        ) -> DocumentProperty:
+        '''
+        Set one property on an existing document, replacing any value of that name.
+
+        The first set creates the property table. A successful set bumps the
+        document's ``updated_at``. Header columns are not written.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name. Stripped once.
+        :type name: str
+        :param value: The property value.
+        :type value: Any
+        :param value_type: The declared type: string, number, or boolean.
+        :type value_type: str
+        :return: The stored property.
+        :rtype: DocumentProperty
+        '''
+
+        # A bad property is a model defect. Do not translate it into a catalog code.
+        DocumentProperty.rejection(name, value, value_type)
+
+        # A missing document is a storage miss, not a domain-catalog error.
+        if not self.exists(document_id):
+            ServiceError.raise_for(
+                self,
+                H5_DOCUMENT_NOT_FOUND_ID,
+                message='Document row is absent.',
+                document_id=document_id,
+            )
+
+        # Construct the domain value. It refuses what the check above missed.
+        prop = DocumentProperty(
+            document_id=document_id,
+            name=name,
+            value=value,
+            value_type=value_type,
+        )
+        self._require_column_fit(prop)
+
+        with self.client() as h5:
+
+            # Ensure the parent group and the property table exist.
+            self._ensure_group(h5)
+            table = self.table_repo.ensure_table(
+                h5,
+                DOCUMENT_PROPERTIES_TABLE,
+                DocumentPropertyTableObject,
+                title='Document Properties',
+            )
+
+            # Replace any row for this name. One name has one value.
+            h5.remove_rows(
+                DOCUMENT_PROPERTIES_TABLE,
+                self._property_key_condition(prop.document_id, prop.name),
+            )
+            DocumentPropertyTableObject.from_model(prop).to_row(table)
+            table.flush()
+
+            # A successful set moves the document clock.
+            self._touch_header(h5, prop.document_id)
+
+        # Return the stored property, name already stripped.
+        return prop
+
+    # * method: remove_property
+    def remove_property(self, document_id: str, name: str) -> bool:
+        '''
+        Remove one property by name. Absent rows and absent documents succeed.
+
+        The document clock moves only when a row was removed and the document
+        still exists. This does not call ``h5.h5file.remove_node``.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name. Stripped once.
+        :type name: str
+        :return: True when a row was removed.
+        :rtype: bool
+        '''
+
+        # A non-string or empty name cannot match a stored row.
+        if not isinstance(name, str) or not name.strip():
+            return False
+        if not self.file_exists():
+            return False
+
+        with self.client() as h5:
+
+            # A missing table is an empty bag, not an error.
+            if not h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+                return False
+
+            # Remove the one row, if it is there.
+            removed = h5.remove_rows(
+                DOCUMENT_PROPERTIES_TABLE,
+                self._property_key_condition(document_id, name.strip()),
+            )
+
+            # Move the clock only when a row actually went away.
+            if removed:
+                self._touch_header(h5, document_id)
+
+        # Return whether a row was removed.
+        return removed > 0
+
+    # * method: _raise_property_filter
+    def _raise_property_filter(self,
+            name: Any,
+            value: Any,
+            value_type: Any,
+        ) -> None:
+        '''
+        Raise when a property filter is partial or does not match the type rules.
+
+        :param name: The filter name, or None.
+        :type name: Any
+        :param value: The filter value, or None.
+        :type value: Any
+        :param value_type: The filter type, or None.
+        :type value_type: Any
+        :return: None
+        :rtype: None
+        '''
+
+        # All three omitted is no filter. A bad filter stays a model defect.
+        DocumentProperty.filter_rejection(name, value, value_type)
+
+    # * method: _require_column_fit
+    def _require_column_fit(self, prop: DocumentProperty) -> None:
+        '''
+        Refuse a name or string value the aligned column would truncate.
+
+        :param prop: The property about to be written.
+        :type prop: DocumentProperty
+        :return: None
+        :rtype: None
+        '''
+
+        # The name is not truncated. A column that cannot hold it fails the write.
+        name_width = DocumentPropertyTableObject._H5_TYPES['name'].itemsize
+        if len(prop.name.encode('utf-8')) > name_width:
+            ServiceError.raise_for(
+                self,
+                H5_PROPERTY_NAME_TOO_LONG_ID,
+                message='Property name does not fit the aligned column.',
+                name=prop.name,
+            )
+
+        # A string value is not truncated either.
+        if prop.value_type == 'string':
+            value_width = DocumentPropertyTableObject._H5_TYPES['value_string'].itemsize
+            if len(prop.value.encode('utf-8')) > value_width:
+                ServiceError.raise_for(
+                    self,
+                    H5_PROPERTY_VALUE_TOO_LONG_ID,
+                    message='Property value does not fit the aligned column.',
+                    value_type=prop.value_type,
+                )
+
+    # * method: _property_key_condition
+    def _property_key_condition(self, document_id: str, name: str) -> str:
+        '''
+        Return an escaped condition for one ``(document_id, name)`` row.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The stored property name.
+        :type name: str
+        :return: A PyTables condition.
+        :rtype: str
+        '''
+
+        # Escape both parts. A quote in either must not widen the match.
+        return ' & '.join([
+            KBTableRepository.string_equals('document_id', document_id),
+            KBTableRepository.string_equals('name', name),
+        ])
+
+    # * method: _property_condition
+    def _property_condition(self,
+            name: str,
+            value: Any,
+            value_type: str,
+        ) -> str:
+        '''
+        Return an escaped exact-match condition for one property name and value.
+
+        :param name: The stored property name.
+        :type name: str
+        :param value: The value to match.
+        :type value: Any
+        :param value_type: The declared type.
+        :type value_type: str
+        :return: A PyTables condition.
+        :rtype: str
+        '''
+
+        # Match the stored name and the stored type. Do not cross types.
+        parts = [
+            KBTableRepository.string_equals('name', name),
+            KBTableRepository.string_equals('value_type', value_type),
+        ]
+        if value_type == 'string':
+            parts.append(KBTableRepository.string_equals('value_string', value))
+        elif value_type == 'number':
+            parts.append(KBTableRepository.number_equals('value_number', value))
+        else:
+            parts.append(KBTableRepository.bool_equals('value_boolean', value))
+
+        # Return the conjunction.
+        return ' & '.join(parts)
+
+    # * method: _matching_property_ids
+    def _matching_property_ids(self,
+            h5,
+            name: str,
+            value: Any,
+            value_type: str,
+        ) -> set:
+        '''
+        Return document ids whose property table has this exact value.
+
+        A missing table matches nothing. The condition is escaped; a query
+        error is not turned into a file-wide list.
+
+        :param h5: The open H5Client instance.
+        :param name: The stored property name.
+        :type name: str
+        :param value: The value to match.
+        :type value: Any
+        :param value_type: The declared type.
+        :type value_type: str
+        :return: Matching document identifiers.
+        :rtype: set
+        '''
+
+        # No table means no document has the property.
+        if not h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+            return set()
+
+        # Query the property table only. Do not scan section text.
+        rows = h5.read_rows(
+            DOCUMENT_PROPERTIES_TABLE,
+            condition=self._property_condition(name, value, value_type),
+        )
+        return {row['document_id'] for row in rows}
+
+    # * method: _read_properties
+    def _read_properties(self, h5, document_id: str) -> List[DocumentProperty]:
+        '''
+        Read one document's property bag, sorted by name.
+
+        A missing table is an empty bag and does not raise.
+
+        :param h5: The open H5Client instance.
+        :param document_id: The document identifier.
+        :type document_id: str
+        :return: Properties sorted by name, case-sensitive ordinal order.
+        :rtype: List[DocumentProperty]
+        '''
+
+        # Absence of the table is an empty bag.
+        if not h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+            return []
+
+        # Read this document's rows and sort by the stored name.
+        rows = h5.read_rows(
+            DOCUMENT_PROPERTIES_TABLE,
+            condition=KBTableRepository.string_equals('document_id', document_id),
+        )
+        props = [
+            DocumentPropertyTableObject.from_row(row).to_property()
+            for row in rows
+        ]
+        props.sort(key=lambda prop: prop.name)
+        return props
+
+    # * method: _property_bags
+    def _property_bags(self, h5) -> Dict[str, List[DocumentProperty]]:
+        '''
+        Read every property row, grouped by document and sorted by name.
+
+        :param h5: The open H5Client instance.
+        :return: Document id to sorted property bag. Missing ids are absent.
+        :rtype: Dict[str, List[DocumentProperty]]
+        '''
+
+        # A missing table loads nothing. Callers treat a miss as [].
+        bags: Dict[str, List[DocumentProperty]] = {}
+        if not h5.node_exists(DOCUMENT_PROPERTIES_TABLE):
+            return bags
+
+        # Group rows, then sort each bag by name.
+        rows = h5.read_rows(DOCUMENT_PROPERTIES_TABLE)
+        for row in rows:
+            prop = DocumentPropertyTableObject.from_row(row).to_property()
+            bags.setdefault(prop.document_id, []).append(prop)
+        for props in bags.values():
+            props.sort(key=lambda prop: prop.name)
+        return bags
+
+    # * method: _touch_header
+    def _touch_header(self, h5, document_id: str) -> None:
+        '''
+        Bump a document header's ``updated_at`` without touching its property rows.
+
+        A missing header is left alone. The timestamp is the ISO UTC form
+        ``DocumentAggregate`` already writes.
+
+        :param h5: The open H5Client instance.
+        :param document_id: The document identifier.
+        :type document_id: str
+        :return: None
+        :rtype: None
+        '''
+
+        # Nothing to bump when the header table or the row is absent.
+        if not h5.node_exists(DOCUMENTS_TABLE):
+            return
+        condition = KBTableRepository.string_equals('id', document_id)
+        rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
+        if not rows:
+            return
+
+        # Rewrite the header row with a new timestamp. Property rows stay.
+        data = dict(rows[0])
+        data['updated_at'] = datetime.now(timezone.utc).isoformat()
+        h5.remove_rows(DOCUMENTS_TABLE, condition)
+        table = h5.get_table(DOCUMENTS_TABLE)
+        DocumentTableObject.from_row(data).to_row(table)
+        table.flush()

@@ -106,3 +106,84 @@ class KBTableRepository(TableRepository, H5Repository):
 
         # Return the newly created table.
         return table
+
+    # * method: bytes_literal (static)
+    @staticmethod
+    def bytes_literal(value: str) -> str:
+        '''
+        Return a PyTables bytes literal with every byte hex-escaped.
+
+        A quote, colon, or backslash in ``value`` stays inside the literal.
+        The condition cannot close the string and widen the match.
+
+        :param value: The string to embed.
+        :type value: str
+        :return: A ``b'...'`` literal safe to interpolate into a condition.
+        :rtype: str
+        '''
+
+        # Hex-escape every byte so control characters never reach the parser.
+        encoded = value.encode('utf-8')
+        body = ''.join('\\x%02x' % byte for byte in encoded)
+
+        # Return the bytes literal, including the empty literal.
+        return f"b'{body}'"
+
+    # * method: string_equals (static)
+    @staticmethod
+    def string_equals(column: str, value: str) -> str:
+        '''
+        Return an equality condition for a string column.
+
+        :param column: The table column name. Not user input.
+        :type column: str
+        :param value: The string to match exactly.
+        :type value: str
+        :return: A parenthesized PyTables condition.
+        :rtype: str
+        '''
+
+        # Bind the escaped literal to the named column.
+        return f'({column} == {KBTableRepository.bytes_literal(value)})'
+
+    # * method: number_equals (static)
+    @staticmethod
+    def number_equals(column: str, value: Any) -> str:
+        '''
+        Return an equality condition for a float64 column.
+
+        ``1`` and ``1.0`` compare equal. The literal round-trips a float64.
+
+        :param column: The table column name. Not user input.
+        :type column: str
+        :param value: The number to match.
+        :type value: Any
+        :return: A parenthesized PyTables condition.
+        :rtype: str
+        '''
+
+        # Format with enough digits to round-trip the stored float64.
+        literal = format(float(value), '.17g')
+
+        # Return the numeric equality.
+        return f'({column} == {literal})'
+
+    # * method: bool_equals (static)
+    @staticmethod
+    def bool_equals(column: str, value: bool) -> str:
+        '''
+        Return an equality condition for a boolean column.
+
+        :param column: The table column name. Not user input.
+        :type column: str
+        :param value: The boolean to match. ``False`` is a real value.
+        :type value: bool
+        :return: A parenthesized PyTables condition.
+        :rtype: str
+        '''
+
+        # Use the PyTables boolean literals. Do not coerce through truthiness.
+        literal = 'True' if value else 'False'
+
+        # Return the boolean equality.
+        return f'({column} == {literal})'

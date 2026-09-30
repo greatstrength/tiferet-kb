@@ -4,7 +4,7 @@
 
 # ** core
 from abc import abstractmethod
-from typing import List, Optional
+from typing import Any, List, Optional
 
 # ** app
 from tiferet.interfaces import Service
@@ -50,9 +50,16 @@ class DocumentService(Service):
             status: Optional[str] = None,
             title: Optional[str] = None,
             include_sections: bool = False,
+            include_properties: bool = False,
+            property_name: Optional[str] = None,
+            property_value: Any = None,
+            property_value_type: Optional[str] = None,
         ) -> List:
         '''
         List documents with optional filters.
+
+        Property arguments are additive. Omitting all three adds no property
+        condition. ``False``, ``0``, and ``''`` are real filter values.
 
         :param folder_id: Optional folder identifier to filter by.
         :type folder_id: str | None
@@ -64,10 +71,56 @@ class DocumentService(Service):
         :type title: str | None
         :param include_sections: If True, populate sections for each document.
         :type include_sections: bool
+        :param include_properties: If True, populate each document's property bag.
+        :type include_properties: bool
+        :param property_name: Optional property name to match exactly.
+        :type property_name: str | None
+        :param property_value: Optional property value to match exactly.
+        :type property_value: Any
+        :param property_value_type: Optional declared type of the property value.
+        :type property_value_type: str | None
         :return: A list of document aggregates.
         :rtype: List
         '''
         raise NotImplementedError('list method is required for DocumentService.')
+
+    # * method: set_property
+    @abstractmethod
+    def set_property(self,
+            document_id: str,
+            name: str,
+            value: Any,
+            value_type: str,
+        ):
+        '''
+        Set one named typed value on an existing document, replacing that name.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name.
+        :type name: str
+        :param value: The property value.
+        :type value: Any
+        :param value_type: The declared type: string, number, or boolean.
+        :type value_type: str
+        :return: The stored property.
+        '''
+        raise NotImplementedError('set_property method is required for DocumentService.')
+
+    # * method: remove_property
+    @abstractmethod
+    def remove_property(self, document_id: str, name: str) -> bool:
+        '''
+        Remove one property by name. Absent rows succeed.
+
+        :param document_id: The document identifier.
+        :type document_id: str
+        :param name: The property name.
+        :type name: str
+        :return: True when a row was removed.
+        :rtype: bool
+        '''
+        raise NotImplementedError('remove_property method is required for DocumentService.')
 
     # * method: save
     @abstractmethod

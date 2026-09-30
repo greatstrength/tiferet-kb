@@ -64,6 +64,18 @@ features:
       commands:
         - attribute_id: remove_document_event
           name: Remove document
+    set_property:
+      name: Set Document Property
+      description: Set a named typed value on a document
+      commands:
+        - attribute_id: set_document_property_event
+          name: Set document property
+    remove_property:
+      name: Remove Document Property
+      description: Remove a named value from a document
+      commands:
+        - attribute_id: remove_document_property_event
+          name: Remove document property
 
   # Section features
   section:
