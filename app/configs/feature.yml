@@ -181,3 +181,54 @@ features:
       commands:
         - attribute_id: remove_folder_event
           name: Remove folder
+
+  # Tag features
+  tag:
+    add:
+      name: Add Tag
+      description: Create a new knowledge base tag
+      commands:
+        - attribute_id: add_tag_event
+          name: Add tag
+    get:
+      name: Get Tag
+      description: Retrieve a tag by ID
+      commands:
+        - attribute_id: get_tag_event
+          name: Get tag
+    list:
+      name: List Tags
+      description: List all tags
+      commands:
+        - attribute_id: list_tags_event
+          name: List tags
+    update:
+      name: Update Tag
+      description: Update a tag attribute
+      commands:
+        - attribute_id: update_tag_event
+          name: Update tag
+    remove:
+      name: Remove Tag
+      description: Remove a tag that no document carries
+      commands:
+        - attribute_id: remove_tag_event
+          name: Remove tag
+    tag_document:
+      name: Tag Document
+      description: Record that a document carries a tag
+      commands:
+        - attribute_id: tag_document_event
+          name: Tag document
+    untag_document:
+      name: Untag Document
+      description: Remove a document-tag association
+      commands:
+        - attribute_id: untag_document_event
+          name: Untag document
+    list_document_tags:
+      name: List Document Tags
+      description: List the tags a document carries
+      commands:
+        - attribute_id: list_document_tags_event
+          name: List document tags

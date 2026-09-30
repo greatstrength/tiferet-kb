@@ -11,6 +11,7 @@ from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
 from ...interfaces.document import DocumentService
+from ...interfaces.tag import TagService
 from ...mappers.document import DocumentAggregate, DocumentSectionAggregate
 from ..document import (
     AddDocument,
@@ -32,6 +33,11 @@ def mock_document_service() -> DocumentService:
     '''Mock DocumentService for testing.'''
     return mock.Mock(spec=DocumentService)
 
+# ** fixture: mock_tag_service
+@pytest.fixture
+def mock_tag_service() -> TagService:
+    '''Mock TagService for testing.'''
+    return mock.Mock(spec=TagService)
 # ** fixture: sample_document
 @pytest.fixture
 def sample_document() -> DocumentAggregate:
@@ -145,27 +151,34 @@ def test_get_document_not_found(mock_document_service):
         )
 
 # ** test: list_documents_success
-def test_list_documents_success(mock_document_service, sample_document):
+def test_list_documents_success(mock_document_service, mock_tag_service, sample_document):
     '''Test listing documents.'''
 
     mock_document_service.list.return_value = [sample_document]
 
     result = DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': mock_document_service},
+        dependencies={
+            'document_service': mock_document_service,
+            'tag_service': mock_tag_service,
+        },
     )
 
     assert len(result) == 1
+    mock_tag_service.list_document_ids.assert_not_called()
 
 # ** test: list_documents_with_filters
-def test_list_documents_with_filters(mock_document_service):
+def test_list_documents_with_filters(mock_document_service, mock_tag_service):
     '''Test listing documents with filters.'''
 
     mock_document_service.list.return_value = []
 
     DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': mock_document_service},
+        dependencies={
+            'document_service': mock_document_service,
+            'tag_service': mock_tag_service,
+        },
         folder_id='folder-1',
         status='draft',
     )
@@ -180,16 +193,20 @@ def test_list_documents_with_filters(mock_document_service):
         property_value=None,
         property_value_type=None,
     )
+    mock_tag_service.list_document_ids.assert_not_called()
 
 # ** test: list_documents_forwards_title
-def test_list_documents_forwards_title(mock_document_service):
+def test_list_documents_forwards_title(mock_document_service, mock_tag_service):
     '''ListDocuments forwards an exact title, including when it is set.'''
 
     mock_document_service.list.return_value = []
 
     DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': mock_document_service},
+        dependencies={
+            'document_service': mock_document_service,
+            'tag_service': mock_tag_service,
+        },
         title='memory:agent:default',
     )
 
@@ -203,6 +220,7 @@ def test_list_documents_forwards_title(mock_document_service):
         property_value=None,
         property_value_type=None,
     )
+    mock_tag_service.list_document_ids.assert_not_called()
 
 # ** test: update_document_success
 def test_update_document_success(mock_document_service, sample_document):
@@ -248,16 +266,20 @@ def test_update_document_invalid_status(mock_document_service):
         )
 
 # ** test: remove_document_success
-def test_remove_document_success(mock_document_service):
+def test_remove_document_success(mock_document_service, mock_tag_service):
     '''Test successful removal of a document.'''
 
     result = DomainEvent.handle(
         RemoveDocument,
-        dependencies={'document_service': mock_document_service},
+        dependencies={
+            'document_service': mock_document_service,
+            'tag_service': mock_tag_service,
+        },
         id='doc-001',
     )
 
     assert result == 'doc-001'
+    mock_tag_service.clear_document.assert_called_once_with('doc-001')
     mock_document_service.delete.assert_called_once_with('doc-001')
 
 # *** section event tests

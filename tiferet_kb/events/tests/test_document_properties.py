@@ -24,6 +24,7 @@ from ...assets.errors import (
 from ...domain.document import DocumentProperty, DocumentSection
 from ...mappers.document import DocumentTableObject
 from ...repos.document import DOCUMENT_PROPERTIES_TABLE, DocumentH5Repository
+from ...repos.tag import TagH5Repository
 from ..document import (
     AddDocument,
     GetDocument,
@@ -42,6 +43,12 @@ from ... import __version__
 def doc_repo(tmp_path: Path) -> DocumentH5Repository:
     '''Provide a document repository on a temporary HDF5 file.'''
     return DocumentH5Repository(h5_file=str(tmp_path / 'props.h5'))
+
+# ** fixture: tag_repo
+@pytest.fixture
+def tag_repo(tmp_path: Path) -> TagH5Repository:
+    '''Tag repository sharing the property-test file.'''
+    return TagH5Repository(h5_file=str(tmp_path / 'props.h5'))
 
 # *** functions
 
@@ -280,7 +287,7 @@ def test_header_updates_do_not_drop_or_alias_the_bag(doc_repo):
     assert loaded.properties[0].value == 'high'
 
 # ** test: list_include_and_filter_are_independent
-def test_list_include_and_filter_are_independent(doc_repo):
+def test_list_include_and_filter_are_independent(doc_repo, tag_repo):
     '''list loads the bag only when asked, and one property filter AND-s with header filters.'''
 
     draft = add_doc(doc_repo, 'Draft', folder_id='folder-1', status='draft')
@@ -291,7 +298,7 @@ def test_list_include_and_filter_are_independent(doc_repo):
 
     headers = DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': doc_repo},
+        dependencies={'document_service': doc_repo, 'tag_service': tag_repo},
     )
     assert all(doc.properties == [] for doc in headers)
 
@@ -346,7 +353,7 @@ def test_list_include_and_filter_are_independent(doc_repo):
     assert missed == []
 
 # ** test: quoted_filter_matches_only_the_stored_value
-def test_quoted_filter_matches_only_the_stored_value(doc_repo):
+def test_quoted_filter_matches_only_the_stored_value(doc_repo, tag_repo):
     '''A quote, colon, or backslash matches only the stored row and does not list the file.'''
 
     quoted = add_doc(doc_repo, 'Quoted')
@@ -373,14 +380,14 @@ def test_quoted_filter_matches_only_the_stored_value(doc_repo):
     with pytest.raises(TiferetError) as exc_info:
         DomainEvent.handle(
             ListDocuments,
-            dependencies={'document_service': doc_repo},
+            dependencies={'document_service': doc_repo, 'tag_service': tag_repo},
             property_name='priority',
             property_value='high',
         )
     assert error_code(exc_info) == KB_INVALID_PROPERTY_FILTER_ID
 
 # ** test: list_event_forwards_property_arguments
-def test_list_event_forwards_property_arguments(doc_repo):
+def test_list_event_forwards_property_arguments(doc_repo, tag_repo):
     '''ListDocuments forwards the property arguments, including the defaults.'''
 
     add_doc(doc_repo, 'Forward')
@@ -394,7 +401,7 @@ def test_list_event_forwards_property_arguments(doc_repo):
     doc_repo.list = capture
     DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': doc_repo},
+        dependencies={'document_service': doc_repo, 'tag_service': tag_repo},
     )
     assert seen == {
         'folder_id': None,
@@ -410,7 +417,7 @@ def test_list_event_forwards_property_arguments(doc_repo):
 
     DomainEvent.handle(
         ListDocuments,
-        dependencies={'document_service': doc_repo},
+        dependencies={'document_service': doc_repo, 'tag_service': tag_repo},
         include_properties=True,
         property_name='priority',
         property_value=False,
@@ -420,7 +427,7 @@ def test_list_event_forwards_property_arguments(doc_repo):
     assert seen['property_value'] is False
 
 # ** test: delete_drops_rows_and_does_not_remove_the_table_node
-def test_delete_drops_rows_and_does_not_remove_the_table_node(doc_repo):
+def test_delete_drops_rows_and_does_not_remove_the_table_node(doc_repo, tag_repo):
     '''Deleting a document removes its property rows through the table, not remove_node.'''
 
     doc = add_doc(doc_repo, 'Gone', id='same-id')
@@ -435,7 +442,7 @@ def test_delete_drops_rows_and_does_not_remove_the_table_node(doc_repo):
     doc_repo.node_repo.remove_node = wrapped
     DomainEvent.handle(
         RemoveDocument,
-        dependencies={'document_service': doc_repo},
+        dependencies={'document_service': doc_repo, 'tag_service': tag_repo},
         id=doc.id,
     )
     assert DOCUMENT_PROPERTIES_TABLE not in calls

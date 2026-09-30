@@ -92,3 +92,29 @@ attrs:
   remove_folder_event:
     module_path: tiferet_kb.events.folder
     class_name: RemoveFolder
+
+  # Tag events
+  add_tag_event:
+    module_path: tiferet_kb.events.tag
+    class_name: AddTag
+  get_tag_event:
+    module_path: tiferet_kb.events.tag
+    class_name: GetTag
+  list_tags_event:
+    module_path: tiferet_kb.events.tag
+    class_name: ListTags
+  update_tag_event:
+    module_path: tiferet_kb.events.tag
+    class_name: UpdateTag
+  remove_tag_event:
+    module_path: tiferet_kb.events.tag
+    class_name: RemoveTag
+  tag_document_event:
+    module_path: tiferet_kb.events.tag
+    class_name: TagDocument
+  untag_document_event:
+    module_path: tiferet_kb.events.tag
+    class_name: UntagDocument
+  list_document_tags_event:
+    module_path: tiferet_kb.events.tag
+    class_name: ListDocumentTags

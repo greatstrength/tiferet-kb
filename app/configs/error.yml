@@ -104,3 +104,23 @@ errors:
     message:
       - lang: en_US
         text: 'Invalid content type: {content_type}. Must be text, markdown, code, table, or image'
+  kb_tag_not_found:
+    name: Tag Not Found
+    message:
+      - lang: en_US
+        text: 'Tag not found: {tag_id}'
+  kb_tag_already_exists:
+    name: Tag Already Exists
+    message:
+      - lang: en_US
+        text: 'Tag with ID {id} already exists'
+  kb_tag_in_use:
+    name: Tag In Use
+    message:
+      - lang: en_US
+        text: 'Tag {id} is carried by existing documents'
+  kb_invalid_tag_attribute:
+    name: Invalid Tag Attribute
+    message:
+      - lang: en_US
+        text: 'Invalid tag attribute: {attribute}'

@@ -74,6 +74,18 @@ KB_EMBEDDING_DIMENSION_MISMATCH_ID = 'KB_EMBEDDING_DIMENSION_MISMATCH'
 # ** constant: kb_section_not_embedded_id
 KB_SECTION_NOT_EMBEDDED_ID = 'KB_SECTION_NOT_EMBEDDED'
 
+# ** constant: kb_tag_not_found_id
+KB_TAG_NOT_FOUND_ID = 'KB_TAG_NOT_FOUND'
+
+# ** constant: kb_tag_already_exists_id
+KB_TAG_ALREADY_EXISTS_ID = 'KB_TAG_ALREADY_EXISTS'
+
+# ** constant: kb_tag_in_use_id
+KB_TAG_IN_USE_ID = 'KB_TAG_IN_USE'
+
+# ** constant: kb_invalid_tag_attribute_id
+KB_INVALID_TAG_ATTRIBUTE_ID = 'KB_INVALID_TAG_ATTRIBUTE'
+
 # *** constants
 
 # ** constant: default_errors
@@ -292,6 +304,42 @@ DEFAULT_ERRORS = {
         'name': 'Section Not Embedded',
         'message': [
             {'lang': 'en_US', 'text': 'Section {section_id} has no embedding'}
+        ]
+    },
+
+    # * error: KB_TAG_NOT_FOUND
+    KB_TAG_NOT_FOUND_ID: {
+        'id': KB_TAG_NOT_FOUND_ID,
+        'name': 'Tag Not Found',
+        'message': [
+            {'lang': 'en_US', 'text': 'Tag not found: {tag_id}'}
+        ]
+    },
+
+    # * error: KB_TAG_ALREADY_EXISTS
+    KB_TAG_ALREADY_EXISTS_ID: {
+        'id': KB_TAG_ALREADY_EXISTS_ID,
+        'name': 'Tag Already Exists',
+        'message': [
+            {'lang': 'en_US', 'text': 'Tag with ID {id} already exists'}
+        ]
+    },
+
+    # * error: KB_TAG_IN_USE
+    KB_TAG_IN_USE_ID: {
+        'id': KB_TAG_IN_USE_ID,
+        'name': 'Tag In Use',
+        'message': [
+            {'lang': 'en_US', 'text': 'Tag {id} is carried by existing documents'}
+        ]
+    },
+
+    # * error: KB_INVALID_TAG_ATTRIBUTE
+    KB_INVALID_TAG_ATTRIBUTE_ID: {
+        'id': KB_INVALID_TAG_ATTRIBUTE_ID,
+        'name': 'Invalid Tag Attribute',
+        'message': [
+            {'lang': 'en_US', 'text': 'Invalid tag attribute: {attribute}'}
         ]
     },
 }

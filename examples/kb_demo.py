@@ -21,7 +21,7 @@ from unittest import mock
 # ** app
 from tiferet.events import DomainEvent
 
-from tiferet_kb.interfaces import CategoryService, DocumentService
+from tiferet_kb.interfaces import CategoryService, DocumentService, TagService
 from tiferet_kb.events import (
     AddCategory,
     ListCategories,
@@ -40,6 +40,8 @@ mock_category_service.list.return_value = []
 mock_document_service = mock.Mock(spec=DocumentService)
 mock_document_service.exists.return_value = False
 mock_document_service.list.return_value = []
+
+mock_tag_service = mock.Mock(spec=TagService)
 
 # *** demo
 
@@ -116,7 +118,10 @@ mock_document_service.list.return_value = [document]
 print('3. Listing documents...')
 docs = DomainEvent.handle(
     ListDocuments,
-    dependencies={'document_service': mock_document_service},
+    dependencies={
+        'document_service': mock_document_service,
+        'tag_service': mock_tag_service,
+    },
 )
 for doc in docs:
     print(f'   - {doc.title} (status={doc.status}, sections={len(doc.sections)})')

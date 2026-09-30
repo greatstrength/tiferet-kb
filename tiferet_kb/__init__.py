@@ -7,8 +7,8 @@
 # __version__ without requiring the full dependency tree to be installed.
 try:
     from . import assets as a
-    from .domain import Category, Document, DocumentSection, EmbeddingRecord, TextSegment, Paragraph, Template, TemplateSection, Folder
-    from .interfaces import CategoryService, DocumentService, TemplateService, FolderService
+    from .domain import Category, Document, DocumentSection, EmbeddingRecord, TextSegment, Paragraph, Template, TemplateSection, Folder, Tag
+    from .interfaces import CategoryService, DocumentService, TemplateService, FolderService, TagService
     from .mappers import (
         CategoryAggregate,
         CategoryNodeObject,
@@ -24,6 +24,8 @@ try:
         TemplateSectionTableObject,
         FolderAggregate,
         FolderNodeObject,
+        TagAggregate,
+        TagNodeObject,
     )
     from .events import (
         EmbedDocumentSections,
