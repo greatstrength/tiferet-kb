@@ -8,7 +8,7 @@ from typing import Any, List
 # ** app
 from tiferet.events import DomainEvent
 
-from ..assets import constants as const
+from ..assets import error as err
 from ..domain import Category
 from ..interfaces import CategoryService, DocumentService
 from ..mappers import CategoryAggregate
@@ -77,7 +77,7 @@ class AddCategory(DomainEvent):
         # Verify no duplicate category exists.
         self.verify(
             expression=not self.category_service.exists(category.id),
-            error_code=const.KB_CATEGORY_ALREADY_EXISTS_ID,
+            error_code=err.KB_CATEGORY_ALREADY_EXISTS_ID,
             message=f'Category with ID {category.id} already exists.',
             id=category.id,
         )
@@ -130,7 +130,7 @@ class GetCategory(DomainEvent):
         # Verify that the category exists.
         self.verify(
             expression=category is not None,
-            error_code=const.KB_CATEGORY_NOT_FOUND_ID,
+            error_code=err.KB_CATEGORY_NOT_FOUND_ID,
             category_id=id,
         )
 
@@ -225,7 +225,7 @@ class UpdateCategory(DomainEvent):
         valid_attributes = {'name', 'description', 'icon', 'color'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=const.KB_INVALID_CATEGORY_ATTRIBUTE_ID,
+            error_code=err.KB_INVALID_CATEGORY_ATTRIBUTE_ID,
             message=f'Invalid category attribute: {attribute}',
             attribute=attribute,
         )
@@ -234,7 +234,7 @@ class UpdateCategory(DomainEvent):
         if attribute == 'name':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=const.KB_INVALID_CATEGORY_ATTRIBUTE_ID,
+                error_code=err.KB_INVALID_CATEGORY_ATTRIBUTE_ID,
                 message='A category name is required when updating the name attribute.',
             )
 
@@ -244,7 +244,7 @@ class UpdateCategory(DomainEvent):
         # Verify that the category exists.
         self.verify(
             expression=category is not None,
-            error_code=const.KB_CATEGORY_NOT_FOUND_ID,
+            error_code=err.KB_CATEGORY_NOT_FOUND_ID,
             category_id=id,
         )
 
@@ -317,7 +317,7 @@ class RemoveCategory(DomainEvent):
         referencing_docs = self.document_service.list(category_id=id)
         self.verify(
             expression=len(referencing_docs) == 0,
-            error_code=const.KB_CATEGORY_IN_USE_ID,
+            error_code=err.KB_CATEGORY_IN_USE_ID,
             message=f'Category {id} is referenced by existing documents.',
             id=id,
         )

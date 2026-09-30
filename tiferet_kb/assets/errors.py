@@ -3,7 +3,7 @@
 # *** imports
 
 # ** app
-from .constants import (
+from .error import (
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_DOCUMENT_ALREADY_EXISTS_ID,
     KB_DOCUMENT_SECTION_NOT_FOUND_ID,

@@ -8,7 +8,7 @@ from typing import Dict, List, Optional
 # ** app
 from tiferet.events import DomainEvent
 
-from ..assets import constants as const
+from ..assets import error as err
 from ..interfaces.document import DocumentService
 
 # *** events
@@ -63,7 +63,7 @@ class EmbedDocumentSections(DomainEvent):
         # Verify the document exists.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=const.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -75,7 +75,7 @@ class EmbedDocumentSections(DomainEvent):
         for section_id in embeddings:
             self.verify(
                 expression=section_id in section_id_set,
-                error_code=const.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+                error_code=err.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
                 section_id=section_id,
                 document_id=document_id,
             )
@@ -187,7 +187,7 @@ class RemoveEmbedding(DomainEvent):
         embedding = self.document_service.get_embedding(section_id)
         self.verify(
             expression=embedding is not None,
-            error_code=const.KB_SECTION_NOT_EMBEDDED_ID,
+            error_code=err.KB_SECTION_NOT_EMBEDDED_ID,
             section_id=section_id,
         )
 

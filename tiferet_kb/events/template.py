@@ -8,7 +8,7 @@ from typing import Any, List
 # ** app
 from tiferet.events import DomainEvent
 
-from ..assets import constants as const
+from ..assets import error as err
 from ..domain.template import Template
 from ..domain.document import Document
 from ..interfaces.template import TemplateService
@@ -83,7 +83,7 @@ class AddTemplate(DomainEvent):
         # Verify no duplicate.
         self.verify(
             expression=not self.template_service.exists(template.id),
-            error_code=const.KB_TEMPLATE_ALREADY_EXISTS_ID,
+            error_code=err.KB_TEMPLATE_ALREADY_EXISTS_ID,
             message=f'Template with ID {template.id} already exists.',
             id=template.id,
         )
@@ -148,7 +148,7 @@ class GetTemplate(DomainEvent):
         # Verify existence.
         self.verify(
             expression=template is not None,
-            error_code=const.KB_TEMPLATE_NOT_FOUND_ID,
+            error_code=err.KB_TEMPLATE_NOT_FOUND_ID,
             template_id=id,
         )
 
@@ -244,7 +244,7 @@ class UpdateTemplate(DomainEvent):
         valid_attributes = {'name', 'description', 'category_id'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=const.KB_TEMPLATE_NOT_FOUND_ID,
+            error_code=err.KB_TEMPLATE_NOT_FOUND_ID,
             message=f'Invalid template attribute: {attribute}',
             attribute=attribute,
         )
@@ -253,7 +253,7 @@ class UpdateTemplate(DomainEvent):
         template = self.template_service.get(id)
         self.verify(
             expression=template is not None,
-            error_code=const.KB_TEMPLATE_NOT_FOUND_ID,
+            error_code=err.KB_TEMPLATE_NOT_FOUND_ID,
             template_id=id,
         )
 
@@ -367,7 +367,7 @@ class ApplyTemplate(DomainEvent):
         template = self.template_service.get(template_id)
         self.verify(
             expression=template is not None,
-            error_code=const.KB_TEMPLATE_NOT_FOUND_ID,
+            error_code=err.KB_TEMPLATE_NOT_FOUND_ID,
             template_id=template_id,
         )
 

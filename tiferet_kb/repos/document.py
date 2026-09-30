@@ -11,9 +11,10 @@ import numpy as np
 
 # ** app
 from tiferet.assets import TiferetError
+from tiferet.domain import ModelError
 from tiferet_h5.repos import H5Repository
 
-from ..assets import constants as const
+from ..assets import error as err
 from ..interfaces.document import DocumentService
 from ..domain.document import DocumentProperty
 from ..domain.segment import TextSegment, Paragraph
@@ -555,9 +556,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
                 # Validate dimension consistency.
                 if existing_embs.shape[0] > 0 and existing_embs.shape[1] != new_vec.shape[0]:
-                    from ..assets import constants as const
+                    from ..assets import error as err
                     TiferetError.raise_error(
-                        const.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
+                        err.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
                         expected=int(existing_embs.shape[1]),
                         actual=int(new_vec.shape[0]),
                     )
@@ -1015,14 +1016,19 @@ class DocumentH5Repository(H5Repository, DocumentService):
         '''
 
         # Refuse an invalid property before any write.
-        code = DocumentProperty.rejection(name, value, value_type)
-        if code is not None:
-            TiferetError.raise_error(code, name=name, value_type=value_type)
+        try:
+            DocumentProperty.rejection(name, value, value_type)
+        except ModelError as error:
+            TiferetError.raise_error(
+                error.error_code,
+                name=name,
+                value_type=value_type,
+            )
 
         # Do not create a document, and do not write a row for a missing one.
         if not self.exists(document_id):
             TiferetError.raise_error(
-                const.KB_DOCUMENT_NOT_FOUND_ID,
+                err.KB_DOCUMENT_NOT_FOUND_ID,
                 document_id=document_id,
             )
 
@@ -1120,11 +1126,12 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :rtype: None
         '''
 
-        # All three omitted is no filter.
-        code = DocumentProperty.filter_rejection(name, value, value_type)
-        if code is not None:
+        # All three omitted is no filter. A defect is a model error, raised as KB_*.
+        try:
+            DocumentProperty.filter_rejection(name, value, value_type)
+        except ModelError as error:
             TiferetError.raise_error(
-                code,
+                error.error_code,
                 name=name,
                 value_type=value_type,
             )
@@ -1144,7 +1151,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
         name_width = DocumentPropertyTableObject._H5_TYPES['name'].itemsize
         if len(prop.name.encode('utf-8')) > name_width:
             TiferetError.raise_error(
-                const.KB_INVALID_PROPERTY_NAME_ID,
+                err.KB_INVALID_PROPERTY_NAME_ID,
                 name=prop.name,
             )
 
@@ -1153,7 +1160,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             value_width = DocumentPropertyTableObject._H5_TYPES['value_string'].itemsize
             if len(prop.value.encode('utf-8')) > value_width:
                 TiferetError.raise_error(
-                    const.KB_INVALID_PROPERTY_VALUE_ID,
+                    err.KB_INVALID_PROPERTY_VALUE_ID,
                     value_type=prop.value_type,
                 )
 

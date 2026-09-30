@@ -12,9 +12,9 @@ from uuid import uuid4
 from pydantic import Field, model_validator
 
 # ** app
-from tiferet.domain import DomainObject
+from tiferet.domain import DomainObject, ModelError
 
-from ..assets import constants as const
+from ..assets import error as err
 from .segment import Paragraph
 
 # *** constants
@@ -232,10 +232,8 @@ class DocumentProperty(DomainObject):
         :rtype: DocumentProperty
         '''
 
-        # Reject the same cases the event raises as KB_* codes.
-        code = type(self).rejection(self.name, self.value, self.value_type)
-        if code is not None:
-            raise ValueError(code)
+        # Refuse an invalid property as a model defect, not a domain outcome.
+        type(self).rejection(self.name, self.value, self.value_type)
 
         # Return the valid property.
         return self
@@ -283,9 +281,9 @@ class DocumentProperty(DomainObject):
 
     # * method: rejection
     @classmethod
-    def rejection(cls, name: Any, value: Any, value_type: Any) -> Optional[str]:
+    def rejection(cls, name: Any, value: Any, value_type: Any) -> None:
         '''
-        Return the KB error code for an invalid property, or None when it is valid.
+        Raise ModelError when a property name, type, or value cannot be stored.
 
         The name is judged after one strip. The type is not inferred from the value.
 
@@ -295,24 +293,33 @@ class DocumentProperty(DomainObject):
         :type value: Any
         :param value_type: The candidate type.
         :type value_type: Any
-        :return: An error-code id, or None.
-        :rtype: str | None
+        :return: None
+        :rtype: None
         '''
 
         # Empty or non-string names are invalid. The stored form is the strip.
         if not isinstance(name, str) or not name.strip():
-            return const.KB_INVALID_PROPERTY_NAME_ID
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_NAME_ID,
+                message='Invalid property name.',
+                name=name,
+            )
 
         # The caller must pass string, number, or boolean. Nothing else.
         if value_type not in PROPERTY_VALUE_TYPES:
-            return const.KB_INVALID_PROPERTY_TYPE_ID
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_TYPE_ID,
+                message='Invalid property value type.',
+                value_type=value_type,
+            )
 
         # The value must match the declared type, with no cross-type coercion.
         if not cls.value_matches(value, value_type):
-            return const.KB_INVALID_PROPERTY_VALUE_ID
-
-        # The parts are storable.
-        return None
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_VALUE_ID,
+                message='Property value does not match the declared type.',
+                value_type=value_type,
+            )
 
     # * method: filter_rejection
     @classmethod
@@ -320,9 +327,9 @@ class DocumentProperty(DomainObject):
             name: Any,
             value: Any,
             value_type: Any,
-        ) -> Optional[str]:
+        ) -> None:
         '''
-        Return the KB error code for an incomplete or invalid property filter.
+        Raise ModelError for an incomplete or invalid property filter.
 
         All three arguments omitted (``None``) is no filter. ``False``, ``0``,
         and ``''`` are real values, not omissions. If any argument is set, all
@@ -334,8 +341,8 @@ class DocumentProperty(DomainObject):
         :type value: Any
         :param value_type: The filter type, or None when omitted.
         :type value_type: Any
-        :return: An error-code id, or None when the filter is absent or valid.
-        :rtype: str | None
+        :return: None
+        :rtype: None
         '''
 
         # Omission is None on every argument, not a false or empty value.
@@ -345,14 +352,19 @@ class DocumentProperty(DomainObject):
             value_type is not None,
         )
         if not any(supplied):
-            return None
+            return
 
         # A partial triple is not a filter. There is no name-only match.
         if not all(supplied):
-            return const.KB_INVALID_PROPERTY_FILTER_ID
+            ModelError.raise_error(
+                err.KB_INVALID_PROPERTY_FILTER_ID,
+                message='A property filter requires name, value, and value type.',
+                name=name,
+                value_type=value_type,
+            )
 
         # A complete triple uses the write rules.
-        return cls.rejection(name, value, value_type)
+        cls.rejection(name, value, value_type)
 
 # ** model: document
 class Document(DomainObject):

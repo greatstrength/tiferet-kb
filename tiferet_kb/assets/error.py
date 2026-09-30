@@ -1,6 +1,6 @@
-"""tiferet_kb Assets Constants"""
+"""tiferet_kb Error Code Identifiers"""
 
-# *** constants
+# *** constants (ids)
 
 # ** constant: kb_document_not_found_id
 KB_DOCUMENT_NOT_FOUND_ID = 'KB_DOCUMENT_NOT_FOUND'

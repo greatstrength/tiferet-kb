@@ -13,7 +13,7 @@ import yaml
 from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
-from ...assets.constants import (
+from ...assets.error import (
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
     KB_INVALID_PROPERTY_FILTER_ID,
@@ -466,7 +466,7 @@ def test_header_columns_and_wiring_stay_in_scope():
         'updated_at',
     }
     assert 'content' not in DocumentSection.model_fields
-    assert __version__ == '1.0.0b3'
+    assert __version__ == '1.0.0a1'
 
     root = Path(__file__).resolve().parents[3]
     feature = yaml.safe_load((root / 'app/configs/feature.yml').read_text())
