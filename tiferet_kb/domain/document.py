@@ -14,7 +14,7 @@ from pydantic import Field, model_validator
 # ** app
 from tiferet.domain import DomainObject, ModelError
 
-from ..assets import error as err
+from ..assets import errors as err
 from .segment import Paragraph
 
 # *** constants

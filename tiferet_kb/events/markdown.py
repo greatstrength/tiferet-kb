@@ -8,7 +8,7 @@ from typing import List, Optional
 # ** app
 from tiferet.events import DomainEvent
 
-from ..assets import error as err
+from .. import a
 from ..domain.document import Document, DocumentSection
 from ..interfaces.document import DocumentService
 from ..mappers.document import DocumentAggregate, DocumentSectionAggregate
@@ -78,7 +78,7 @@ class ImportMarkdownDocument(DomainEvent):
             raw_sections = split_markdown_sections(content)
         except ValueError as e:
             self.raise_error(
-                error_code=err.KB_INVALID_CONTENT_TYPE_ID,
+                error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
                 message=str(e),
                 content_type='markdown',
             )
@@ -86,7 +86,7 @@ class ImportMarkdownDocument(DomainEvent):
         # Verify at least one section was parsed.
         self.verify(
             expression=len(raw_sections) > 0,
-            error_code=err.KB_INVALID_CONTENT_TYPE_ID,
+            error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
             message='Markdown content produced no sections.',
             content_type='markdown',
         )
@@ -178,7 +178,7 @@ class ExportDocumentMarkdown(DomainEvent):
         # Verify the document exists.
         self.verify(
             expression=document is not None,
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 

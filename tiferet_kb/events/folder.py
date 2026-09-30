@@ -8,7 +8,7 @@ from typing import Any, Dict, List
 # ** app
 from tiferet.events import DomainEvent
 
-from ..assets import error as err
+from .. import a
 from ..domain.folder import Folder
 from ..interfaces.folder import FolderService
 from ..interfaces.document import DocumentService
@@ -84,7 +84,7 @@ class AddFolder(DomainEvent):
         # Verify no duplicate.
         self.verify(
             expression=not self.folder_service.exists(folder.id),
-            error_code=err.KB_FOLDER_ALREADY_EXISTS_ID,
+            error_code=a.errors.KB_FOLDER_ALREADY_EXISTS_ID,
             message=f'Folder with ID {folder.id} already exists.',
             id=folder.id,
         )
@@ -137,7 +137,7 @@ class GetFolder(DomainEvent):
         # Verify existence.
         self.verify(
             expression=folder is not None,
-            error_code=err.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
             folder_id=id,
         )
 
@@ -189,7 +189,7 @@ class ListFolderContents(DomainEvent):
         # Verify the folder exists.
         self.verify(
             expression=self.folder_service.exists(folder_id),
-            error_code=err.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
             folder_id=folder_id,
         )
 
@@ -249,7 +249,7 @@ class MoveFolder(DomainEvent):
         folder = self.folder_service.get(id)
         self.verify(
             expression=folder is not None,
-            error_code=err.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
             folder_id=id,
         )
 
@@ -257,7 +257,7 @@ class MoveFolder(DomainEvent):
         if new_parent_id:
             self.verify(
                 expression=new_parent_id != id,
-                error_code=err.KB_FOLDER_CIRCULAR_REFERENCE_ID,
+                error_code=a.errors.KB_FOLDER_CIRCULAR_REFERENCE_ID,
                 message='A folder cannot be its own parent.',
                 folder_id=id,
             )
@@ -267,7 +267,7 @@ class MoveFolder(DomainEvent):
             parent = self.folder_service.get(new_parent_id)
             self.verify(
                 expression=parent is not None,
-                error_code=err.KB_FOLDER_NOT_FOUND_ID,
+                error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
                 folder_id=new_parent_id,
             )
             new_path = f'{parent.path}/{folder.name}'
@@ -331,7 +331,7 @@ class MoveDocument(DomainEvent):
         document = self.document_service.get(document_id)
         self.verify(
             expression=document is not None,
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 

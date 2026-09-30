@@ -9,7 +9,6 @@ import os
 # ** infra
 import pytest
 import tables
-from tiferet.assets import TiferetError
 from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import NodeRepository, TableRepository
 from tiferet_h5.utils import H5Client
@@ -562,15 +561,15 @@ def test_int_unstamped_file_still_opens(doc_repo, h5_file, sample_document):
 
 # ** test_int: embed_dimension_mismatch
 def test_int_embed_dimension_mismatch(doc_repo, sample_document, sample_section):
-    '''A vector of a different length raises the KB dimension mismatch as a TiferetError.'''
+    '''A vector of a different length raises a storage ServiceError, not a catalog code.'''
 
     doc_repo.save(sample_document)
     doc_repo.save_section(sample_section)
     doc_repo.embed_section('sec-001', [0.1, 0.2, 0.3], 'test-model')
 
-    with pytest.raises(TiferetError) as exc_info:
+    with pytest.raises(ServiceError) as exc_info:
         doc_repo.embed_section('sec-002', [0.1, 0.2], 'test-model')
-    assert exc_info.value.error_code == 'KB_EMBEDDING_DIMENSION_MISMATCH'
+    assert exc_info.value.error_code == 'H5_EMBEDDING_DIMENSION_MISMATCH'
 
     # The stored embedding is untouched.
     assert doc_repo.get_embedding('sec-001') is not None

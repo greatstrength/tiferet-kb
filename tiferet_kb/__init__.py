@@ -6,6 +6,7 @@
 # Wrap runtime imports in a try/except so that build tools can import
 # __version__ without requiring the full dependency tree to be installed.
 try:
+    from . import assets as a
     from .domain import Category, Document, DocumentSection, EmbeddingRecord, TextSegment, Paragraph, Template, TemplateSection, Folder
     from .interfaces import CategoryService, DocumentService, TemplateService, FolderService
     from .mappers import (

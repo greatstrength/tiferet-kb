@@ -3,5 +3,6 @@
 # *** exports
 
 # ** app
-from . import error
+from . import core
+from . import errors
 from .errors import DEFAULT_ERRORS

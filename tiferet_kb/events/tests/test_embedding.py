@@ -10,7 +10,7 @@ from unittest import mock
 from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
-from ...assets import error as err
+from ...assets import errors as err
 from ...interfaces.document import DocumentService
 from ...mappers.document import DocumentSectionAggregate
 from ..embedding import EmbedDocumentSections, SearchSimilarSections, RemoveEmbedding

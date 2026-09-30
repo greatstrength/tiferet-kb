@@ -13,7 +13,7 @@ import yaml
 from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
-from ...assets.error import (
+from ...assets.errors import (
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
     KB_INVALID_PROPERTY_FILTER_ID,
@@ -371,7 +371,12 @@ def test_quoted_filter_matches_only_the_stored_value(doc_repo):
     assert none == []
 
     with pytest.raises(TiferetError) as exc_info:
-        doc_repo.list(property_name='priority', property_value='high')
+        DomainEvent.handle(
+            ListDocuments,
+            dependencies={'document_service': doc_repo},
+            property_name='priority',
+            property_value='high',
+        )
     assert error_code(exc_info) == KB_INVALID_PROPERTY_FILTER_ID
 
 # ** test: list_event_forwards_property_arguments

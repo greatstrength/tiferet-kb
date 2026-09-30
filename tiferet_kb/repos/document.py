@@ -10,11 +10,9 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 # ** app
-from tiferet.assets import TiferetError
-from tiferet.domain import ModelError
+from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import H5Repository
 
-from ..assets import error as err
 from ..interfaces.document import DocumentService
 from ..domain.document import DocumentProperty
 from ..domain.segment import TextSegment, Paragraph
@@ -44,6 +42,18 @@ EMBEDDINGS_ARRAY = '/kb/documents/section_embeddings'
 
 # ** constant: embedding_ids_array
 EMBEDDING_IDS_ARRAY = '/kb/documents/section_embedding_ids'
+
+# ** constant: h5_embedding_dimension_mismatch_id
+H5_EMBEDDING_DIMENSION_MISMATCH_ID = 'H5_EMBEDDING_DIMENSION_MISMATCH'
+
+# ** constant: h5_document_not_found_id
+H5_DOCUMENT_NOT_FOUND_ID = 'H5_DOCUMENT_NOT_FOUND'
+
+# ** constant: h5_property_name_too_long_id
+H5_PROPERTY_NAME_TOO_LONG_ID = 'H5_PROPERTY_NAME_TOO_LONG'
+
+# ** constant: h5_property_value_too_long_id
+H5_PROPERTY_VALUE_TOO_LONG_ID = 'H5_PROPERTY_VALUE_TOO_LONG'
 
 # *** repos
 
@@ -556,9 +566,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
                 # Validate dimension consistency.
                 if existing_embs.shape[0] > 0 and existing_embs.shape[1] != new_vec.shape[0]:
-                    from ..assets import error as err
-                    TiferetError.raise_error(
-                        err.KB_EMBEDDING_DIMENSION_MISMATCH_ID,
+                    ServiceError.raise_for(
+                        self,
+                        H5_EMBEDDING_DIMENSION_MISMATCH_ID,
+                        message='Embedding dimension does not match the stored vectors.',
                         expected=int(existing_embs.shape[1]),
                         actual=int(new_vec.shape[0]),
                     )
@@ -1015,20 +1026,15 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :rtype: DocumentProperty
         '''
 
-        # Refuse an invalid property before any write.
-        try:
-            DocumentProperty.rejection(name, value, value_type)
-        except ModelError as error:
-            TiferetError.raise_error(
-                error.error_code,
-                name=name,
-                value_type=value_type,
-            )
+        # A bad property is a model defect. Do not translate it into a catalog code.
+        DocumentProperty.rejection(name, value, value_type)
 
-        # Do not create a document, and do not write a row for a missing one.
+        # A missing document is a storage miss, not a domain-catalog error.
         if not self.exists(document_id):
-            TiferetError.raise_error(
-                err.KB_DOCUMENT_NOT_FOUND_ID,
+            ServiceError.raise_for(
+                self,
+                H5_DOCUMENT_NOT_FOUND_ID,
+                message='Document row is absent.',
                 document_id=document_id,
             )
 
@@ -1126,15 +1132,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :rtype: None
         '''
 
-        # All three omitted is no filter. A defect is a model error, raised as KB_*.
-        try:
-            DocumentProperty.filter_rejection(name, value, value_type)
-        except ModelError as error:
-            TiferetError.raise_error(
-                error.error_code,
-                name=name,
-                value_type=value_type,
-            )
+        # All three omitted is no filter. A bad filter stays a model defect.
+        DocumentProperty.filter_rejection(name, value, value_type)
 
     # * method: _require_column_fit
     def _require_column_fit(self, prop: DocumentProperty) -> None:
@@ -1150,8 +1149,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         # The name is not truncated. A column that cannot hold it fails the write.
         name_width = DocumentPropertyTableObject._H5_TYPES['name'].itemsize
         if len(prop.name.encode('utf-8')) > name_width:
-            TiferetError.raise_error(
-                err.KB_INVALID_PROPERTY_NAME_ID,
+            ServiceError.raise_for(
+                self,
+                H5_PROPERTY_NAME_TOO_LONG_ID,
+                message='Property name does not fit the aligned column.',
                 name=prop.name,
             )
 
@@ -1159,8 +1160,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         if prop.value_type == 'string':
             value_width = DocumentPropertyTableObject._H5_TYPES['value_string'].itemsize
             if len(prop.value.encode('utf-8')) > value_width:
-                TiferetError.raise_error(
-                    err.KB_INVALID_PROPERTY_VALUE_ID,
+                ServiceError.raise_for(
+                    self,
+                    H5_PROPERTY_VALUE_TOO_LONG_ID,
+                    message='Property value does not fit the aligned column.',
                     value_type=prop.value_type,
                 )
 

@@ -9,10 +9,14 @@ from typing import Any, List
 from tiferet.domain import ModelError
 from tiferet.events import DomainEvent
 
-from ..assets import error as err
+from .. import a
 from ..domain.document import Document, DocumentProperty, DocumentSection
 from ..interfaces.document import DocumentService
-from ..mappers.document import DocumentAggregate, DocumentSectionAggregate
+from ..mappers.document import (
+    DocumentAggregate,
+    DocumentPropertyTableObject,
+    DocumentSectionAggregate,
+)
 from ..utils.markdown import parse_content_to_paragraphs
 
 # *** events
@@ -89,7 +93,7 @@ class AddDocument(DomainEvent):
         # Verify no duplicate document exists.
         self.verify(
             expression=not self.document_service.exists(document.id),
-            error_code=err.KB_DOCUMENT_ALREADY_EXISTS_ID,
+            error_code=a.errors.KB_DOCUMENT_ALREADY_EXISTS_ID,
             message=f'Document with ID {document.id} already exists.',
             id=document.id,
         )
@@ -99,7 +103,7 @@ class AddDocument(DomainEvent):
             valid_statuses = {'draft', 'published', 'archived'}
             self.verify(
                 expression=status in valid_statuses,
-                error_code=err.KB_INVALID_DOCUMENT_STATUS_ID,
+                error_code=a.errors.KB_INVALID_DOCUMENT_STATUS_ID,
                 message=f'Invalid document status: {status}',
                 status=status,
             )
@@ -151,7 +155,7 @@ class GetDocument(DomainEvent):
         # Verify that the document exists.
         self.verify(
             expression=document is not None,
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 
@@ -295,7 +299,7 @@ class UpdateDocument(DomainEvent):
         valid_attributes = {'title', 'status', 'category_id', 'folder_id'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=err.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
+            error_code=a.errors.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
             message=f'Invalid document attribute: {attribute}',
             attribute=attribute,
         )
@@ -305,7 +309,7 @@ class UpdateDocument(DomainEvent):
             valid_statuses = {'draft', 'published', 'archived'}
             self.verify(
                 expression=value in valid_statuses,
-                error_code=err.KB_INVALID_DOCUMENT_STATUS_ID,
+                error_code=a.errors.KB_INVALID_DOCUMENT_STATUS_ID,
                 message=f'Invalid document status: {value}',
                 status=value,
             )
@@ -314,7 +318,7 @@ class UpdateDocument(DomainEvent):
         if attribute == 'title':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=err.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
+                error_code=a.errors.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
                 message='A document title is required.',
             )
 
@@ -324,7 +328,7 @@ class UpdateDocument(DomainEvent):
         # Verify that the document exists.
         self.verify(
             expression=document is not None,
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 
@@ -449,7 +453,7 @@ class AddDocumentSection(DomainEvent):
         valid_types = {'text', 'markdown', 'code'}
         self.verify(
             expression=content_type in valid_types,
-            error_code=err.KB_INVALID_CONTENT_TYPE_ID,
+            error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
             message=f'Invalid content type: {content_type}',
             content_type=content_type,
         )
@@ -457,7 +461,7 @@ class AddDocumentSection(DomainEvent):
         # Verify the parent document exists.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -540,7 +544,7 @@ class UpdateDocumentSection(DomainEvent):
         valid_attributes = {'title', 'content', 'content_type', 'heading_level', 'icon'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=err.KB_INVALID_SECTION_ATTRIBUTE_ID,
+            error_code=a.errors.KB_INVALID_SECTION_ATTRIBUTE_ID,
             message=f'Invalid section attribute: {attribute}',
             attribute=attribute,
         )
@@ -550,7 +554,7 @@ class UpdateDocumentSection(DomainEvent):
             valid_types = {'text', 'markdown', 'code'}
             self.verify(
                 expression=value in valid_types,
-                error_code=err.KB_INVALID_CONTENT_TYPE_ID,
+                error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
                 message=f'Invalid content type: {value}',
                 content_type=value,
             )
@@ -559,7 +563,7 @@ class UpdateDocumentSection(DomainEvent):
         if attribute == 'title':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=err.KB_INVALID_SECTION_ATTRIBUTE_ID,
+                error_code=a.errors.KB_INVALID_SECTION_ATTRIBUTE_ID,
                 message='A section title is required.',
             )
 
@@ -567,7 +571,7 @@ class UpdateDocumentSection(DomainEvent):
         document_id = kwargs.get('document_id')
         self.verify(
             expression=document_id is not None,
-            error_code=err.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             message='document_id is required to locate the section.',
             section_id=id,
         )
@@ -579,7 +583,7 @@ class UpdateDocumentSection(DomainEvent):
         # Verify the section exists.
         self.verify(
             expression=section is not None,
-            error_code=err.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             section_id=id,
         )
 
@@ -688,7 +692,7 @@ class ReorderDocumentSections(DomainEvent):
         # Verify the document exists.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -754,10 +758,23 @@ class SetDocumentProperty(DomainEvent):
         except ModelError as error:
             self.raise_error(error.error_code, name=name, value_type=value_type)
 
+        # A name or string the aligned column cannot store fails as a catalog error.
+        stored_name = name.strip()
+        name_width = DocumentPropertyTableObject._H5_TYPES['name'].itemsize
+        if len(stored_name.encode('utf-8')) > name_width:
+            self.raise_error(a.errors.KB_INVALID_PROPERTY_NAME_ID, name=name)
+        if value_type == 'string' and isinstance(value, str):
+            value_width = DocumentPropertyTableObject._H5_TYPES['value_string'].itemsize
+            if len(value.encode('utf-8')) > value_width:
+                self.raise_error(
+                    a.errors.KB_INVALID_PROPERTY_VALUE_ID,
+                    value_type=value_type,
+                )
+
         # Do not create a document for a property write.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=err.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
