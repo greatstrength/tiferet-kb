@@ -55,6 +55,15 @@ class TestTagAggregate(AggregateTestBase):
         aggregate.set_color(None)
         assert aggregate.color is None
 
+    # ** test: update
+    def test_update(self, aggregate):
+        '''The generic update mutator renames, recolors, and clears color.'''
+
+        aggregate.update('name', 'Ship')
+        aggregate.update('color', None)
+        assert aggregate.name == 'Ship'
+        assert aggregate.color is None
+
 # ** class: TestTagNodeObject
 class TestTagNodeObject(NodeObjectTestBase):
     '''Tests for TagNodeObject.'''

@@ -240,11 +240,9 @@ class UpdateTag(DomainEvent):
             tag_id=id,
         )
 
-        # Apply the requested update using aggregate mutation methods.
-        if attribute == 'name':
-            tag.rename(value)
-        elif attribute == 'color':
-            tag.set_color(value)
+        # Apply the mutation on the aggregate. The allowlist stays here so
+        # the event still raises KB_INVALID_TAG_ATTRIBUTE.
+        tag.update(attribute, value)
 
         # Persist the updated tag.
         self.tag_service.save(tag)

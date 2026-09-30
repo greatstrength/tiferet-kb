@@ -22,9 +22,37 @@ class TagAggregate(Tag, Aggregate):
     '''
     A mutable aggregate representation of a knowledge base tag.
 
-    Mutation stays on the label: rename, or set and clear color. The id is
-    not a mutation target because associations key off it.
+    Mutation stays on the label. ``update`` is the generic mutator; the id is
+    not a target because associations key off it.
     '''
+
+    # * method: update
+    def update(self, attribute: str, value: Any) -> None:
+        '''
+        Apply one label mutation.
+
+        Name and color are the mutable attributes. Any other attribute,
+        including the id, is left to ``set_attribute``, which rejects fields
+        the model does not declare.
+
+        :param attribute: The attribute to update.
+        :type attribute: str
+        :param value: The new value. Color may be None.
+        :type value: Any
+        :return: None
+        :rtype: None
+        '''
+
+        # Dispatch the known label mutators.
+        if attribute == 'name':
+            self.rename(value)
+            return
+        if attribute == 'color':
+            self.set_color(value)
+            return
+
+        # Unknown attributes fail as model defects, not as a silent no-op.
+        self.set_attribute(attribute, value)
 
     # * method: rename
     def rename(self, name: str) -> None:
