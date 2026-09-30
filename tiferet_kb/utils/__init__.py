@@ -9,4 +9,5 @@ from .markdown import (
     split_markdown_sections,
     join_markdown_sections,
     parse_content_to_paragraphs,
+    render_section,
 )

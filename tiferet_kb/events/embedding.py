@@ -89,7 +89,6 @@ class EmbedDocumentSections(DomainEvent):
         # Return the number of embeddings stored.
         return count
 
-
 # ** event: search_similar_sections
 class SearchSimilarSections(DomainEvent):
     '''
@@ -118,6 +117,7 @@ class SearchSimilarSections(DomainEvent):
             limit: int = 5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
             **kwargs,
         ) -> List[Dict]:
         '''
@@ -131,20 +131,22 @@ class SearchSimilarSections(DomainEvent):
         :type folder_id: str | None
         :param category_id: Optional category filter.
         :type category_id: str | None
+        :param document_id: Optional document filter. Omitted means file-wide.
+        :type document_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: Ranked list of dicts with section_id and score.
         :rtype: List[Dict]
         '''
 
-        # Delegate to the document service.
+        # Delegate to the document service. Always forward document_id, including None.
         return self.document_service.search_similar(
             query_embedding=query_embedding,
             limit=limit,
             folder_id=folder_id,
             category_id=category_id,
+            document_id=document_id,
         )
-
 
 # ** event: remove_embedding
 class RemoveEmbedding(DomainEvent):

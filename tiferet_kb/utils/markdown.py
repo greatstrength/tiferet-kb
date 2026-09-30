@@ -4,7 +4,7 @@
 
 # ** core
 import re
-from typing import List
+from typing import Any, List
 from uuid import uuid4
 
 # ** app
@@ -93,7 +93,6 @@ def parse_paragraph_to_segments(text: str) -> List[TextSegment]:
 
     return segments
 
-
 # ** function: reassemble_paragraph
 def reassemble_paragraph(segments: List[TextSegment]) -> str:
     '''
@@ -124,7 +123,6 @@ def reassemble_paragraph(segments: List[TextSegment]) -> str:
             parts.append(seg.text)
 
     return ''.join(parts)
-
 
 # ** function: split_markdown_sections
 def split_markdown_sections(content: str) -> List[dict]:
@@ -185,7 +183,6 @@ def split_markdown_sections(content: str) -> List[dict]:
 
     return sections
 
-
 # ** function: join_markdown_sections
 def join_markdown_sections(sections) -> str:
     '''
@@ -221,6 +218,49 @@ def join_markdown_sections(sections) -> str:
 
     return '\n\n'.join(parts) + '\n' if parts else ''
 
+# ** function: render_section
+def render_section(section: Any) -> str:
+    '''
+    Reconstruct one section's markdown body from its paragraphs.
+
+    This is the body reconstruction export uses for each section. It does
+    not emit the heading and does not add a document-level trailing newline.
+    Empty paragraphs return an empty string.
+
+    :param section: A section object with a ``paragraphs`` attribute.
+    :type section: Any
+    :return: The rendered section body.
+    :rtype: str
+    '''
+
+    # Empty paragraphs have no body.
+    paragraphs = getattr(section, 'paragraphs', None)
+    if not paragraphs:
+        return ''
+
+    parts: List[str] = []
+    for para in sorted(paragraphs, key=lambda p: p.position):
+
+        if para.block_type == 'code_block':
+
+            # Reconstruct a fenced code block.
+            text = para.segments[0].text if para.segments else ''
+            parts.append(f'```\n{text}\n```')
+
+        elif para.block_type == 'quote':
+
+            # Reconstruct a quote block.
+            text = reassemble_paragraph(para.segments)
+            lines = text.split('\n')
+            parts.append('\n'.join(f'> {line}' for line in lines))
+
+        else:
+
+            # Reconstruct a normal paragraph.
+            parts.append(reassemble_paragraph(para.segments))
+
+    # Join blocks the way export already did. No trailing newline.
+    return '\n\n'.join(parts)
 
 # ** function: parse_content_to_paragraphs
 def parse_content_to_paragraphs(content: str, section_id: str) -> List[Paragraph]:

@@ -12,6 +12,7 @@ from tiferet.assets import TiferetError
 
 from ...interfaces import DocumentService
 from ...mappers import DocumentAggregate, DocumentSectionAggregate
+from ...utils.markdown import parse_content_to_paragraphs, render_section
 from ..markdown import ImportMarkdownDocument, ExportDocumentMarkdown
 
 # *** fixtures
@@ -172,3 +173,41 @@ def test_export_markdown_not_found(mock_document_service: DocumentService):
             dependencies={'document_service': mock_document_service},
             id='nonexistent',
         )
+
+# ** test: export_markdown_body_is_render_section
+def test_export_markdown_body_is_render_section(mock_document_service: DocumentService, monkeypatch):
+    '''Each exported section body is render_section, and export calls that helper.'''
+
+    section = DocumentSectionAggregate(
+        id='sec-1',
+        document_id='doc-1',
+        title='Overview',
+        content_type='markdown',
+        position=0,
+    )
+    section.set_paragraphs(parse_content_to_paragraphs('user prefers Python', 'sec-1'))
+    doc = DocumentAggregate(id='doc-1', title='Overview')
+    doc.sections = [section]
+    mock_document_service.get.return_value = doc
+
+    calls = []
+    real_render = render_section
+
+    def spy(value):
+        calls.append(value)
+        return real_render(value)
+
+    monkeypatch.setattr('tiferet_kb.events.markdown.render_section', spy)
+
+    result = DomainEvent.handle(
+        ExportDocumentMarkdown,
+        dependencies={'document_service': mock_document_service},
+        id='doc-1',
+    )
+
+    body = render_section(section)
+    assert calls == [section]
+    assert body == 'user prefers Python'
+    assert body in result
+    assert result.endswith('\n')
+    assert not body.endswith('\n')

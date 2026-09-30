@@ -149,6 +149,7 @@ def test_search_similar_sections_success(mock_document_service):
         limit=5,
         folder_id=None,
         category_id=None,
+        document_id=None,
     )
 
 
@@ -177,6 +178,28 @@ def test_search_similar_sections_with_filters(mock_document_service):
         limit=5,
         folder_id='folder-001',
         category_id='cat-001',
+        document_id=None,
+    )
+
+# ** test: search_similar_sections_forwards_document_id
+def test_search_similar_sections_forwards_document_id(mock_document_service):
+    '''SearchSimilarSections forwards document_id when it is set.'''
+
+    mock_document_service.search_similar.return_value = []
+
+    DomainEvent.handle(
+        SearchSimilarSections,
+        dependencies={'document_service': mock_document_service},
+        query_embedding=[0.1, 0.2, 0.3],
+        document_id='ns-1',
+    )
+
+    mock_document_service.search_similar.assert_called_once_with(
+        query_embedding=[0.1, 0.2, 0.3],
+        limit=5,
+        folder_id=None,
+        category_id=None,
+        document_id='ns-1',
     )
 
 

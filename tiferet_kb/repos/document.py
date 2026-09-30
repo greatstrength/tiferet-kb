@@ -144,6 +144,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
             status: Optional[str] = None,
+            title: Optional[str] = None,
             include_sections: bool = False,
         ) -> List[DocumentAggregate]:
         '''
@@ -155,6 +156,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :type category_id: str | None
         :param status: Optional status to filter by.
         :type status: str | None
+        :param title: Optional exact document title. Empty or omitted adds no condition.
+        :type title: str | None
         :param include_sections: If True, populate sections for each document.
         :type include_sections: bool
         :return: A list of document aggregates.
@@ -167,18 +170,29 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if not h5.node_exists(DOCUMENTS_TABLE):
                 return []
 
-            # Build the condition from filters.
+            # Build the condition from filters. Title is bound, not interpolated.
             conditions = []
+            condvars = {}
             if folder_id:
                 conditions.append(f'(folder_id == b"{folder_id}")')
             if category_id:
                 conditions.append(f'(category_id == b"{category_id}")')
             if status:
                 conditions.append(f'(status == b"{status}")')
+            if title:
+                conditions.append('(title == title_eq)')
+                condvars['title_eq'] = title.encode('utf-8')
 
-            # Read rows with or without condition.
+            # Read matching header rows. A bound title stays an in-kernel query.
             condition = ' & '.join(conditions) if conditions else None
-            rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
+            if condvars:
+                rows = list(h5.iter_query(
+                    DOCUMENTS_TABLE,
+                    condition,
+                    condvars=condvars,
+                ))
+            else:
+                rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
 
             # Map each row to an aggregate.
             docs = [DocumentTableObject.from_row(r).map() for r in rows]
@@ -520,6 +534,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             limit: int = 5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
         ) -> List[Dict]:
         '''
         Brute-force cosine similarity search over stored embeddings.
@@ -532,6 +547,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :type folder_id: str | None
         :param category_id: Optional category identifier to filter by.
         :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
         :return: A list of dicts with section_id and similarity score, ranked descending.
         :rtype: List[Dict]
         '''
@@ -553,9 +570,14 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Decode IDs.
             id_list = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in ids_raw]
 
-            # Apply metadata filters if requested.
-            if folder_id or category_id:
-                allowed_section_ids = self._get_filtered_section_ids(h5, folder_id, category_id)
+            # Mask before ranking and before limit. A miss is an empty result.
+            if folder_id or category_id or document_id:
+                allowed_section_ids = self._get_filtered_section_ids(
+                    h5,
+                    folder_id=folder_id,
+                    category_id=category_id,
+                    document_id=document_id,
+                )
                 mask = np.array([sid in allowed_section_ids for sid in id_list])
                 if not mask.any():
                     return []
@@ -832,30 +854,65 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 self.node_repo.remove_node(h5, section_path, recursive=True)
                 return
 
+    # * method: _section_ids_for_document
+    def _section_ids_for_document(self, h5, document_id: str) -> set:
+        '''
+        Return section identifiers stored under one document.
+
+        A missing document or a document with no sections returns an empty set.
+        This does not read the header table.
+
+        :param h5: The open H5Client instance.
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :return: Set of section IDs.
+        :rtype: set
+        '''
+
+        # Read the section group only. Do not scan document headers.
+        sections_group = f'{DOCUMENTS_GROUP}/{document_id}/sections'
+        if not h5.node_exists(sections_group):
+            return set()
+
+        root = h5.get_group(sections_group)
+        return set(root._v_children.keys())
+
     # * method: _get_filtered_section_ids
     def _get_filtered_section_ids(self,
             h5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
         ) -> set:
         '''
-        Get the set of section IDs belonging to documents matching the folder/category filters.
+        Get section IDs belonging to documents matching the given filters.
+
+        Filters are a conjunction. When ``document_id`` is the only filter,
+        section identifiers come from that document's group, not a header scan.
 
         :param h5: The open H5Client instance.
         :param folder_id: Optional folder identifier to filter by.
         :type folder_id: str | None
         :param category_id: Optional category identifier to filter by.
         :type category_id: str | None
+        :param document_id: Optional document identifier to filter by.
+        :type document_id: str | None
         :return: Set of section IDs.
         :rtype: set
         '''
 
-        # Build document filter condition.
+        # A document-only scope does not list every header to discover sections.
+        if document_id and not folder_id and not category_id:
+            return self._section_ids_for_document(h5, document_id)
+
+        # Build document filter condition. Include the document id when set.
         conditions = []
         if folder_id:
             conditions.append(f'(folder_id == b"{folder_id}")')
         if category_id:
             conditions.append(f'(category_id == b"{category_id}")')
+        if document_id:
+            conditions.append(f'(id == b"{document_id}")')
 
         condition = ' & '.join(conditions) if conditions else None
 

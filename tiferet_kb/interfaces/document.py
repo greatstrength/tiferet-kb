@@ -48,6 +48,7 @@ class DocumentService(Service):
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
             status: Optional[str] = None,
+            title: Optional[str] = None,
             include_sections: bool = False,
         ) -> List:
         '''
@@ -59,6 +60,8 @@ class DocumentService(Service):
         :type category_id: str | None
         :param status: Optional status to filter by (draft, published, archived).
         :type status: str | None
+        :param title: Optional exact document title. Empty or omitted adds no condition.
+        :type title: str | None
         :param include_sections: If True, populate sections for each document.
         :type include_sections: bool
         :return: A list of document aggregates.
@@ -172,6 +175,7 @@ class DocumentService(Service):
             limit: int = 5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
         ) -> List:
         '''
         Search for document sections similar to the query embedding using cosine similarity.
@@ -184,6 +188,8 @@ class DocumentService(Service):
         :type folder_id: str | None
         :param category_id: Optional category identifier to filter by.
         :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
         :return: A list of dicts with section_id and similarity score.
         :rtype: List
         '''

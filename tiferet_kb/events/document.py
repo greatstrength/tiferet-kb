@@ -109,7 +109,6 @@ class AddDocument(DomainEvent):
         # Return the created document.
         return document
 
-
 # ** event: get_document
 class GetDocument(DomainEvent):
     '''
@@ -158,7 +157,6 @@ class GetDocument(DomainEvent):
         # Return the retrieved document.
         return document
 
-
 # ** event: list_documents
 class ListDocuments(DomainEvent):
     '''
@@ -185,6 +183,7 @@ class ListDocuments(DomainEvent):
             folder_id: str | None = None,
             category_id: str | None = None,
             status: str | None = None,
+            title: str | None = None,
             **kwargs,
         ) -> List[Document]:
         '''
@@ -196,19 +195,21 @@ class ListDocuments(DomainEvent):
         :type category_id: str | None
         :param status: Optional status to filter by.
         :type status: str | None
+        :param title: Optional exact document title. Empty or omitted adds no condition.
+        :type title: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: A list of documents.
         :rtype: List[Document]
         '''
 
-        # Delegate to the document service.
+        # Delegate to the document service. Always forward title, including None.
         return self.document_service.list(
             folder_id=folder_id,
             category_id=category_id,
             status=status,
+            title=title,
         )
-
 
 # ** event: update_document
 class UpdateDocument(DomainEvent):
@@ -309,7 +310,6 @@ class UpdateDocument(DomainEvent):
         # Return the updated document.
         return document
 
-
 # ** event: remove_document
 class RemoveDocument(DomainEvent):
     '''
@@ -350,7 +350,6 @@ class RemoveDocument(DomainEvent):
 
         # Return the document identifier.
         return id
-
 
 # ** event: add_document_section
 class AddDocumentSection(DomainEvent):
@@ -453,7 +452,6 @@ class AddDocumentSection(DomainEvent):
 
         # Return the created section.
         return section
-
 
 # ** event: update_document_section
 class UpdateDocumentSection(DomainEvent):
@@ -571,7 +569,6 @@ class UpdateDocumentSection(DomainEvent):
         # Return the updated section.
         return section
 
-
 # ** event: remove_document_section
 class RemoveDocumentSection(DomainEvent):
     '''
@@ -612,7 +609,6 @@ class RemoveDocumentSection(DomainEvent):
 
         # Return the section identifier.
         return id
-
 
 # ** event: reorder_document_sections
 class ReorderDocumentSections(DomainEvent):

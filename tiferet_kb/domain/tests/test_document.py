@@ -4,9 +4,13 @@
 
 # ** infra
 import pytest
+from pydantic import ValidationError
 
 # ** app
 from ..document import Document, DocumentSection
+from ..segment import Paragraph, TextSegment
+from ...mappers.document import DocumentSectionAggregate
+from ...utils.markdown import render_section
 
 # *** tests
 
@@ -81,3 +85,82 @@ def test_document_rejects_extra_fields():
 
     with pytest.raises(Exception):
         Document(title='Test', unknown_field='bad')
+
+# ** test: section_accepts_content_string
+def test_section_accepts_content_string():
+    '''A content string constructs a section and renders back.'''
+
+    section = DocumentSectionAggregate(
+        id='fact-1',
+        document_id='ns-1',
+        title='user prefers',
+        content='user prefers Python',
+    )
+
+    assert section.position == 0
+    assert section.paragraphs
+    assert section.content == 'user prefers Python'
+    assert 'content' not in section.model_dump()
+    assert render_section(section) == section.content
+    assert not render_section(section).endswith('\n')
+    assert '# user prefers' not in render_section(section)
+
+# ** test: section_paragraphs_win_over_content
+def test_section_paragraphs_win_over_content():
+    '''Non-empty paragraphs are kept when content is also passed.'''
+
+    kept = Paragraph(
+        id='para-1',
+        section_id='fact-1',
+        position=0,
+        block_type='normal',
+        segments=[TextSegment(id='seg-1', position=0, text='stored passage', format_type='plain')],
+    )
+    section = DocumentSection(
+        id='fact-1',
+        document_id='ns-1',
+        title='user prefers',
+        paragraphs=[kept],
+        content='user prefers Python',
+    )
+
+    assert section.paragraphs[0].segments[0].text == 'stored passage'
+    assert section.content == 'stored passage'
+
+# ** test: section_rejects_non_string_content
+def test_section_rejects_non_string_content():
+    '''A non-string content value is a validation error.'''
+
+    with pytest.raises(ValidationError):
+        DocumentSection(
+            id='fact-1',
+            document_id='ns-1',
+            title='user prefers',
+            content=12,
+        )
+
+# ** test: section_rejects_undeclared_field
+def test_section_rejects_undeclared_field():
+    '''An undeclared field other than consumed content still fails.'''
+
+    with pytest.raises(ValidationError):
+        DocumentSection(
+            id='fact-1',
+            document_id='ns-1',
+            title='user prefers',
+            content='user prefers Python',
+            unknown_field='bad',
+        )
+
+# ** test: section_empty_content_renders_empty
+def test_section_empty_content_renders_empty():
+    '''Missing or empty content stores no paragraphs.'''
+
+    missing = DocumentSection(document_id='ns-1', title='empty')
+    empty = DocumentSection(document_id='ns-1', title='empty', content='')
+
+    assert missing.position == 0
+    assert missing.paragraphs == []
+    assert missing.content == ''
+    assert empty.content == ''
+    assert render_section(empty) == ''
