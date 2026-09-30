@@ -10,9 +10,11 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 # ** app
+from tiferet.assets import TiferetError
 from tiferet.interfaces import ServiceError
 from tiferet_h5.repos import H5Repository
 
+from .. import a
 from ..interfaces.document import DocumentService
 from ..domain.document import DocumentProperty
 from ..domain.segment import TextSegment, Paragraph
@@ -170,6 +172,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
             property_name: Optional[str] = None,
             property_value: Any = None,
             property_value_type: Optional[str] = None,
+            visibility: Optional[str] = None,
+            owner_id: Optional[str] = None,
         ) -> List[DocumentAggregate]:
         '''
         List documents with optional filters.
@@ -198,12 +202,27 @@ class DocumentH5Repository(H5Repository, DocumentService):
         :type property_value: Any
         :param property_value_type: Optional declared type of the property value.
         :type property_value_type: str | None
+        :param visibility: Optional visibility to filter by. ``public`` includes
+            stored public, empty, and absent. Omitted does not constrain the field.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by. An absent owner
+            matches no owner filter. Omitted does not constrain the field.
+        :type owner_id: str | None
         :return: A list of document aggregates.
         :rtype: List[DocumentAggregate]
         '''
 
         # Reject a partial or ill-typed property filter before opening the file.
         self._raise_property_filter(property_name, property_value, property_value_type)
+
+        # Reject an unrecognized visibility before reading. An empty list would
+        # look like a status filter that happened to match nothing.
+        if visibility is not None and visibility not in a.core.VISIBILITIES:
+            TiferetError.raise_error(
+                a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
+            )
 
         with self.client() as h5:
 
@@ -235,7 +254,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             else:
                 rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
 
-            # Map each row to an aggregate. properties stays [] until loaded.
+            # Map each row to an aggregate. The read default fills a missing column.
             docs = [DocumentTableObject.from_row(r).map() for r in rows]
 
             # Intersect with one exact property match. A missing table matches nothing.
@@ -247,6 +266,15 @@ class DocumentH5Repository(H5Repository, DocumentService):
                     property_value_type,
                 )
                 docs = [doc for doc in docs if doc.id in matched_ids]
+
+            # Filter access after the read default. Column equality on public would
+            # drop a pre-change row that has no visibility column.
+            if visibility is not None or owner_id is not None:
+                docs = [
+                    doc for doc in docs
+                    if (visibility is None or doc.visibility == visibility)
+                    and (owner_id is None or doc.owner_id == owner_id)
+                ]
 
             # Optionally load sections for each document.
             if include_sections:
@@ -293,9 +321,44 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if h5.read_rows(DOCUMENTS_TABLE, condition=f'(id == b"{document.id}")'):
                 h5.remove_rows(DOCUMENTS_TABLE, f'(id == b"{document.id}")')
 
-            # Append the new row.
-            table_obj.to_row(t)
+            # Append the new row. A pre-change table keeps its columns; the
+            # new fields are written only when the live table already has them.
+            self._append_header_row(t, table_obj)
             t.flush()
+
+    # * method: _append_header_row
+    def _append_header_row(self, table, table_obj: DocumentTableObject) -> None:
+        '''
+        Append a header row, skipping columns the live table does not have.
+
+        A table created by this code has ``visibility`` and ``owner_id``.
+        A pre-change table does not. Adding those columns is schema
+        versioning and is not done here. Reading those rows still applies
+        the default.
+
+        :param table: The open documents table.
+        :type table: tables.Table
+        :param table_obj: The header row to append.
+        :type table_obj: DocumentTableObject
+        :return: None
+        :rtype: None
+        '''
+
+        # Write every declared column when the live table has them.
+        colnames = set(table.colnames)
+        declared = type(table_obj)._H5_TYPES
+        if all(name in colnames for name in declared):
+            table_obj.to_row(table)
+            return
+
+        # Otherwise write only the columns the pre-change table already has.
+        row = table.row
+        data = table_obj.model_dump(by_alias=True)
+        for col_name, col_def in declared.items():
+            if col_name not in colnames:
+                continue
+            row[col_name] = table_obj.encode_value(data.get(col_name), col_def)
+        row.append()
 
     # * method: verify
     def verify(self, section_path: Optional[str] = None) -> None:

@@ -44,12 +44,22 @@ class FolderService(Service):
 
     # * method: list
     @abstractmethod
-    def list(self, parent_id: Optional[str] = None) -> List:
+    def list(self,
+            parent_id: Optional[str] = None,
+            visibility: Optional[str] = None,
+            owner_id: Optional[str] = None,
+        ) -> List:
         '''
         List folders, optionally filtered by parent.
 
         :param parent_id: Optional parent folder ID. None returns root-level folders.
         :type parent_id: str | None
+        :param visibility: Optional visibility to filter by. ``public`` includes
+            stored public, empty, and absent. Omitted does not constrain the field.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by. An absent owner
+            matches no owner filter. Omitted does not constrain the field.
+        :type owner_id: str | None
         :return: A list of folder aggregates.
         :rtype: List
         '''

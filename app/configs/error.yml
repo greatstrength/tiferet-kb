@@ -19,6 +19,11 @@ errors:
     message:
       - lang: en_US
         text: 'Invalid document status: {status}. Must be draft, published, or archived'
+  kb_invalid_visibility:
+    name: Invalid Visibility
+    message:
+      - lang: en_US
+        text: 'Invalid visibility: {visibility}. Must be public, private, or restricted'
   kb_invalid_document_attribute:
     name: Invalid Document Attribute
     message:

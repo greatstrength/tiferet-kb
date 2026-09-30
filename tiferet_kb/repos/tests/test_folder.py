@@ -7,6 +7,7 @@ import os
 
 # ** infra
 import pytest
+from tiferet.assets import TiferetError
 from tiferet_h5.repos import NodeRepository, TableRepository
 from tiferet_h5.utils import H5Client
 
@@ -203,3 +204,72 @@ def test_int_missing_file_reads_are_empty_and_not_created(folder_repo, h5_file):
     folder_repo.move('nope', 'x')
 
     assert not os.path.exists(h5_file)
+
+# *** tests: RFP-008 visibility
+
+# ** test_int: save_get_visibility_and_owner
+def test_int_save_get_visibility_and_owner(folder_repo):
+    '''A folder can store visibility and an optional owner, and get returns them.'''
+
+    folder_repo.save(FolderAggregate(
+        id='f-priv',
+        name='Private',
+        path='/Private',
+        visibility='restricted',
+        owner_id='owner-9',
+    ))
+
+    loaded = folder_repo.get('f-priv')
+    assert loaded.visibility == 'restricted'
+    assert loaded.owner_id == 'owner-9'
+    assert loaded.visibility is not None
+
+# ** test_int: list_visibility_conjoins_with_parent
+def test_int_list_visibility_conjoins_with_parent(folder_repo):
+    '''Visibility and owner filters conjoin with parent_id, and omission hides nothing.'''
+
+    folder_repo.save(FolderAggregate(id='f-root', name='Root', path='/Root', visibility='public'))
+    folder_repo.save(FolderAggregate(
+        id='f-child', name='Child', path='/Root/Child', parent_id='f-root',
+        visibility='private', owner_id='owner-1',
+    ))
+    folder_repo.save(FolderAggregate(
+        id='f-other', name='Other', path='/Other', visibility='private', owner_id='owner-2',
+    ))
+
+    assert {f.id for f in folder_repo.list()} == {'f-root', 'f-child', 'f-other'}
+    assert {f.id for f in folder_repo.list(parent_id='f-root', visibility='private')} == {'f-child'}
+    assert {f.id for f in folder_repo.list('__root__', visibility='public')} == {'f-root'}
+    assert folder_repo.list(owner_id='owner-1')[0].id == 'f-child'
+    assert folder_repo.list(visibility='restricted') == []
+
+# ** test_int: prechange_folder_reads_public_without_rewrite
+def test_int_prechange_folder_reads_public_without_rewrite(folder_repo, h5_file):
+    '''A folder written before these attributes exist reads as public with no owner.'''
+
+    with H5Client(path=h5_file, mode='w') as h5:
+        h5.create_group('/kb/folders/f-old')
+        h5.set_node_attr('/kb/folders/f-old', 'name', 'Old')
+        h5.set_node_attr('/kb/folders/f-old', 'path', '/Old')
+        h5.set_node_attr('/kb/folders/f-old', 'created_at', '2026-01-01T00:00:00+00:00')
+
+    loaded = folder_repo.get('f-old')
+    assert loaded.visibility == 'public'
+    assert loaded.owner_id is None
+    assert loaded.name == 'Old'
+    assert [f.id for f in folder_repo.list(visibility='public')] == ['f-old']
+    assert folder_repo.list(visibility='private') == []
+    assert folder_repo.list(owner_id='owner-1') == []
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        attrs = h5.get_node_attrs('/kb/folders/f-old')
+    assert 'visibility' not in attrs
+    assert 'owner_id' not in attrs
+
+# ** test_int: list_rejects_unknown_visibility
+def test_int_list_rejects_unknown_visibility(folder_repo):
+    '''An unrecognized visibility filter is KB_INVALID_VISIBILITY, not an empty list.'''
+
+    with pytest.raises(TiferetError) as exc_info:
+        folder_repo.list(visibility='published')
+    assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'

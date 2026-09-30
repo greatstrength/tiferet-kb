@@ -172,6 +172,36 @@ class DocumentAggregate(Document, Aggregate):
         self.category_id = category_id
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
+    # * method: set_visibility
+    def set_visibility(self, visibility: str) -> None:
+        '''
+        Set the document visibility label.
+
+        :param visibility: The visibility token (public, private, or restricted).
+        :type visibility: str
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the visibility and timestamp.
+        self.visibility = visibility
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+    # * method: set_owner
+    def set_owner(self, owner_id: str | None) -> None:
+        '''
+        Set or clear the document owner.
+
+        :param owner_id: The opaque owner identifier, or None to clear.
+        :type owner_id: str | None
+        :return: None
+        :rtype: None
+        '''
+
+        # Update the owner and timestamp.
+        self.owner_id = owner_id
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
 # ** mapper: document_table_object
 class DocumentTableObject(TableObject):
     '''
@@ -200,6 +230,12 @@ class DocumentTableObject(TableObject):
     # * attribute: status
     status: str = Field(default='draft', description='Document status.')
 
+    # * attribute: visibility
+    visibility: str = Field(default='public', description='Access label. Empty reads as public.')
+
+    # * attribute: owner_id
+    owner_id: str = Field(default='', description='Opaque owner identifier. Empty reads as absent.')
+
     # * attribute: created_at
     created_at: str = Field(default='', description='ISO 8601 creation timestamp.')
 
@@ -214,6 +250,8 @@ class DocumentTableObject(TableObject):
         'template_id': tables.StringCol(64),
         'folder_id':   tables.StringCol(64),
         'status':      tables.StringCol(32),
+        'visibility':  tables.StringCol(32),
+        'owner_id':    tables.StringCol(64),
         'created_at':  tables.StringCol(32),
         'updated_at':  tables.StringCol(32),
     }
@@ -231,9 +269,14 @@ class DocumentTableObject(TableObject):
 
         # Serialize and construct the aggregate, converting empty strings to None.
         data = self.to_primitive()
-        for field in ('category_id', 'template_id', 'folder_id'):
+        for field in ('category_id', 'template_id', 'folder_id', 'owner_id'):
             if data.get(field) == '':
                 data[field] = None
+
+        # A blank visibility column reads as public, including a pre-change row.
+        visibility = data.get('visibility')
+        if not isinstance(visibility, str) or not visibility.strip():
+            data['visibility'] = 'public'
         data.update(overrides)
 
         # Return the constructed aggregate.
@@ -255,9 +298,13 @@ class DocumentTableObject(TableObject):
 
         # Dump the header only. Sections and properties are stored apart from this row.
         data = document.model_dump(by_alias=False, exclude={'sections', 'properties'})
-        for field in ('category_id', 'template_id', 'folder_id'):
+        for field in ('category_id', 'template_id', 'folder_id', 'owner_id'):
             if data.get(field) is None:
                 data[field] = ''
+
+        # Persist the read default when the aggregate has no visibility token.
+        if not data.get('visibility'):
+            data['visibility'] = 'public'
         data.update(overrides)
 
         # Construct and return the table object.

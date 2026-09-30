@@ -6,8 +6,10 @@
 from typing import List, Optional
 
 # ** app
+from tiferet.assets import TiferetError
 from tiferet_h5.repos import NodeRepository
 
+from .. import a
 from ..interfaces.folder import FolderService
 from ..mappers.folder import (
     FolderAggregate,
@@ -29,8 +31,8 @@ class FolderH5Repository(KBNodeRepository, FolderService):
 
     Folders are stored as node attributes on HDF5 group nodes
     at ``/kb/folders/<id>``.  Each group carries the folder's
-    scalar metadata (name, parent_id, path, created_at) as
-    attributes via ``FolderNodeObject``.
+    scalar metadata (name, parent_id, path, visibility, owner_id,
+    and created_at) as attributes via ``FolderNodeObject``.
 
     ``NodeRepository`` (through ``KBNodeRepository``) owns path resolution, ``save``, and ``exists``.
     ``get`` stays overridden because the identifier is the group name and
@@ -100,7 +102,11 @@ class FolderH5Repository(KBNodeRepository, FolderService):
         return FolderNodeObject.from_attrs(attrs, id=id).map()
 
     # * method: list
-    def list(self, parent_id: Optional[str] = None) -> List[FolderAggregate]:
+    def list(self,
+            parent_id: Optional[str] = None,
+            visibility: Optional[str] = None,
+            owner_id: Optional[str] = None,
+        ) -> List[FolderAggregate]:
         '''
         List folders, optionally filtered by parent_id.
 
@@ -108,9 +114,23 @@ class FolderH5Repository(KBNodeRepository, FolderService):
             Use ``'__root__'`` to list only root-level folders (parent_id is None).
             Use ``None`` (default) to list all folders.
         :type parent_id: str | None
+        :param visibility: Optional visibility to filter by. ``public`` includes
+            stored public, empty, and absent. Omitted does not constrain the field.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by. An absent owner
+            matches no owner filter. Omitted does not constrain the field.
+        :type owner_id: str | None
         :return: A list of folder aggregates.
         :rtype: List[FolderAggregate]
         '''
+
+        # Reject an unrecognized visibility before reading.
+        if visibility is not None and visibility not in a.core.VISIBILITIES:
+            TiferetError.raise_error(
+                a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
+            )
 
         folders: List[FolderAggregate] = []
 
@@ -129,13 +149,19 @@ class FolderH5Repository(KBNodeRepository, FolderService):
                 folder_id = child._v_name
                 folder = FolderNodeObject.from_attrs(attrs, id=folder_id).map()
 
-                # Filter by parent_id if specified.
+                # Filter by parent_id if specified. None still lists every folder.
                 if parent_id == '__root__':
                     if folder.parent_id is not None:
                         continue
                 elif parent_id is not None:
                     if folder.parent_id != parent_id:
                         continue
+
+                # Filter access after the read default, so public includes absence.
+                if visibility is not None and folder.visibility != visibility:
+                    continue
+                if owner_id is not None and folder.owner_id != owner_id:
+                    continue
 
                 folders.append(folder)
 

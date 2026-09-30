@@ -190,4 +190,33 @@ def test_document_table_object_from_model_converts_none_to_empty():
     obj = DocumentTableObject.from_model(agg)
     assert obj.template_id == ''
     assert obj.folder_id == ''
+    assert obj.owner_id == ''
+    assert obj.visibility == 'public'
+
+# ** test: document_table_object_blank_visibility_reads_public
+def test_document_table_object_blank_visibility_reads_public():
+    '''Empty visibility and owner columns read as public and absent.'''
+
+    obj = DocumentTableObject(
+        id='doc-001', title='Test', visibility='', owner_id='',
+        status='draft', created_at='2026-01-01T00:00:00', updated_at='2026-01-01T00:00:00',
+    )
+    agg = obj.map()
+    assert agg.visibility == 'public'
+    assert agg.owner_id is None
+
+# ** test: document_table_object_missing_columns_read_public
+def test_document_table_object_missing_columns_read_public():
+    '''A row dict without the new columns still maps to public and no owner.'''
+
+    obj = DocumentTableObject.from_row({
+        'id': 'doc-old',
+        'title': 'Old',
+        'status': 'draft',
+        'created_at': '2026-01-01T00:00:00',
+        'updated_at': '2026-01-01T00:00:00',
+    })
+    agg = obj.map()
+    assert agg.visibility == 'public'
+    assert agg.owner_id is None
 

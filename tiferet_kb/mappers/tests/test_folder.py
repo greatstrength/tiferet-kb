@@ -76,3 +76,38 @@ class TestFolderNodeObject(NodeObjectTestBase):
     aggregate_sample_data = AGGREGATE_SAMPLE_DATA
     equality_fields = EQUALITY_FIELDS
     attrs_exclude_fields = ['id']
+
+# *** tests
+
+# ** test: folder_node_missing_attrs_read_public
+def test_folder_node_missing_attrs_read_public():
+    '''A folder node without visibility or owner reads as public and absent.'''
+
+    node = FolderNodeObject.from_attrs({
+        'name': 'Old',
+        'path': '/Old',
+        'created_at': '2026-01-01T00:00:00+00:00',
+    }, id='f-old')
+    folder = node.map()
+    assert folder.visibility == 'public'
+    assert folder.owner_id is None
+
+# ** test: folder_node_empty_owner_reads_absent
+def test_folder_node_empty_owner_reads_absent():
+    '''An empty owner attribute reads as absent, and a later save can clear it.'''
+
+    node = FolderNodeObject.from_attrs({
+        'name': 'Owned',
+        'path': '/Owned',
+        'created_at': '2026-01-01T00:00:00+00:00',
+        'visibility': 'private',
+        'owner_id': '',
+    }, id='f-owned')
+    folder = node.map()
+    assert folder.visibility == 'private'
+    assert folder.owner_id is None
+
+    folder.set_owner(None)
+    stored = FolderNodeObject.from_model(folder).to_attrs()
+    assert stored['owner_id'] == ''
+    assert stored['visibility'] == 'private'

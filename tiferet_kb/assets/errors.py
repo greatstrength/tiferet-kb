@@ -14,6 +14,14 @@ KB_DOCUMENT_SECTION_NOT_FOUND_ID = 'KB_DOCUMENT_SECTION_NOT_FOUND'
 # ** constant: kb_invalid_document_status_id
 KB_INVALID_DOCUMENT_STATUS_ID = 'KB_INVALID_DOCUMENT_STATUS'
 
+# ** constant: kb_invalid_visibility_id
+KB_INVALID_VISIBILITY_ID = 'KB_INVALID_VISIBILITY'
+
+# ** constant: kb_invalid_visibility_message
+KB_INVALID_VISIBILITY_MESSAGE = (
+    'Invalid visibility: {visibility}. Must be public, private, or restricted'
+)
+
 # ** constant: kb_invalid_document_attribute_id
 KB_INVALID_DOCUMENT_ATTRIBUTE_ID = 'KB_INVALID_DOCUMENT_ATTRIBUTE'
 
@@ -124,6 +132,15 @@ DEFAULT_ERRORS = {
         'name': 'Invalid Document Status',
         'message': [
             {'lang': 'en_US', 'text': 'Invalid document status: {status}. Must be draft, published, or archived'}
+        ]
+    },
+
+    # * error: KB_INVALID_VISIBILITY
+    KB_INVALID_VISIBILITY_ID: {
+        'id': KB_INVALID_VISIBILITY_ID,
+        'name': 'Invalid Visibility',
+        'message': [
+            {'lang': 'en_US', 'text': KB_INVALID_VISIBILITY_MESSAGE}
         ]
     },
 

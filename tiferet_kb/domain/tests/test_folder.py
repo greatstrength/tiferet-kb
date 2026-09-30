@@ -20,7 +20,6 @@ def test_folder_auto_generates_defaults():
     assert folder.created_at is not None
     assert folder.parent_id is None
 
-
 # ** test: folder_preserves_explicit_values
 def test_folder_preserves_explicit_values():
     '''Test that explicit id and path are preserved.'''
@@ -29,7 +28,6 @@ def test_folder_preserves_explicit_values():
     assert folder.id == 'f-001'
     assert folder.path == '/projects/design'
 
-
 # ** test: folder_with_parent
 def test_folder_with_parent():
     '''Test folder with parent_id.'''
@@ -37,10 +35,30 @@ def test_folder_with_parent():
     folder = Folder(name='Design', parent_id='f-001', path='/projects/design')
     assert folder.parent_id == 'f-001'
 
-
 # ** test: folder_rejects_extra_fields
 def test_folder_rejects_extra_fields():
     '''Test that extra fields are rejected.'''
 
     with pytest.raises(Exception):
         Folder(name='Test', unknown_field='bad')
+
+# ** test: folder_visibility_defaults_public
+def test_folder_visibility_defaults_public():
+    '''A folder with no visibility reads as public and has no owner.'''
+
+    folder = Folder(name='Projects')
+    assert folder.visibility == 'public'
+    assert folder.owner_id is None
+
+# ** test: folder_blank_visibility_reads_public
+def test_folder_blank_visibility_reads_public():
+    '''Empty visibility and owner on a folder read as public and absent.'''
+
+    folder = Folder.model_validate({
+        'name': 'Projects',
+        'path': '/Projects',
+        'visibility': '',
+        'owner_id': '',
+    })
+    assert folder.visibility == 'public'
+    assert folder.owner_id is None

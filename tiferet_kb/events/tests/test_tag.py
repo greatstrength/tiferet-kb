@@ -346,6 +346,8 @@ def test_list_documents_tag_filter_intersects(mock_document_service, mock_tag_se
         property_name=None,
         property_value=None,
         property_value_type=None,
+        visibility=None,
+        owner_id=None,
     )
     mock_tag_service.list_document_ids.assert_called_once_with('release')
 

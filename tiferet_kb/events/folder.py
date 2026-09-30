@@ -14,6 +14,26 @@ from ..interfaces.folder import FolderService
 from ..interfaces.document import DocumentService
 from ..mappers.folder import FolderAggregate
 
+# *** functions
+
+# ** function: cleared_owner_id
+def cleared_owner_id(owner_id: str | None) -> str | None:
+    '''
+    Return a stored owner, or None when the caller omitted, emptied, or blanked it.
+
+    :param owner_id: The caller-supplied owner identifier.
+    :type owner_id: str | None
+    :return: The owner to store, or None to clear.
+    :rtype: str | None
+    '''
+
+    # A missing, empty, or whitespace-only value clears the owner.
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        return None
+
+    # Keep a non-empty owner exactly as supplied.
+    return owner_id
+
 # *** events
 
 # ** event: add_folder
@@ -44,6 +64,8 @@ class AddFolder(DomainEvent):
             id: str | None = None,
             parent_id: str | None = None,
             path: str | None = None,
+            visibility: str | None = None,
+            owner_id: str | None = None,
             **kwargs,
         ) -> Folder:
         '''
@@ -57,6 +79,10 @@ class AddFolder(DomainEvent):
         :type parent_id: str | None
         :param path: Optional explicit path.
         :type path: str | None
+        :param visibility: Optional visibility token. Omitted reads as public.
+        :type visibility: str | None
+        :param owner_id: Optional opaque owner. Empty or whitespace clears it.
+        :type owner_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: The created folder.
@@ -77,6 +103,10 @@ class AddFolder(DomainEvent):
                 folder_kwargs['path'] = f'{parent.path}/{name}'
         if path:
             folder_kwargs['path'] = path
+        if visibility is not None:
+            folder_kwargs['visibility'] = visibility
+        if owner_id is not None:
+            folder_kwargs['owner_id'] = cleared_owner_id(owner_id)
 
         # Create the folder aggregate.
         folder = FolderAggregate(**folder_kwargs)
@@ -89,12 +119,20 @@ class AddFolder(DomainEvent):
             id=folder.id,
         )
 
+        # A supplied visibility must be one of the three exact tokens.
+        if visibility is not None:
+            self.verify(
+                expression=visibility in a.core.VISIBILITIES,
+                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
+            )
+
         # Persist the folder.
         self.folder_service.save(folder)
 
         # Return the created folder.
         return folder
-
 
 # ** event: get_folder
 class GetFolder(DomainEvent):
@@ -144,6 +182,80 @@ class GetFolder(DomainEvent):
         # Return the folder.
         return folder
 
+# ** event: set_folder_visibility
+class SetFolderVisibility(DomainEvent):
+    '''
+    Event to set visibility and owner on an existing folder.
+
+    Visibility is restated on every call. An omitted, empty, or
+    whitespace-only owner clears the stored owner. The call does not
+    create the folder, does not add ``updated_at``, and does not change
+    name, parent, or path.
+    '''
+
+    # * attribute: folder_service
+    folder_service: FolderService
+
+    # * init
+    def __init__(self, folder_service: FolderService):
+        '''
+        Initialize the SetFolderVisibility event.
+
+        :param folder_service: The folder service for retrieval and persistence.
+        :type folder_service: FolderService
+        '''
+
+        # Set the folder service dependency.
+        self.folder_service = folder_service
+
+    # * method: execute
+    @DomainEvent.parameters_required(['id', 'visibility'])
+    def execute(self,
+            id: str,
+            visibility: str,
+            owner_id: str | None = None,
+            **kwargs,
+        ) -> Folder:
+        '''
+        Set visibility and owner on an existing folder.
+
+        :param id: The folder identifier.
+        :type id: str
+        :param visibility: The visibility token (public, private, or restricted).
+        :type visibility: str
+        :param owner_id: Optional owner. Omitted, empty, or whitespace clears it.
+        :type owner_id: str | None
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The updated folder.
+        :rtype: Folder
+        '''
+
+        # Reject a token outside the closed set, including a status token.
+        self.verify(
+            expression=visibility in a.core.VISIBILITIES,
+            error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+            message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+            visibility=visibility,
+        )
+
+        # Retrieve the folder. This event does not create one.
+        folder = self.folder_service.get(id)
+        self.verify(
+            expression=folder is not None,
+            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+            folder_id=id,
+        )
+
+        # Set the access fields. Name, parent, and path stay as they were.
+        folder.set_visibility(visibility)
+        folder.set_owner(cleared_owner_id(owner_id))
+
+        # Persist the folder attributes. No updated_at is added.
+        self.folder_service.save(folder)
+
+        # Return the updated folder.
+        return folder
 
 # ** event: list_folder_contents
 class ListFolderContents(DomainEvent):
@@ -174,17 +286,35 @@ class ListFolderContents(DomainEvent):
 
     # * method: execute
     @DomainEvent.parameters_required(['folder_id'])
-    def execute(self, folder_id: str, **kwargs) -> Dict[str, List]:
+    def execute(self,
+            folder_id: str,
+            visibility: str | None = None,
+            owner_id: str | None = None,
+            **kwargs,
+        ) -> Dict[str, List]:
         '''
         List child folders and documents within a folder.
 
         :param folder_id: The folder identifier.
         :type folder_id: str
+        :param visibility: Optional visibility to filter by, applied to both lists.
+        :type visibility: str | None
+        :param owner_id: Optional owner identifier to filter by, applied to both lists.
+        :type owner_id: str | None
         :param kwargs: Additional keyword arguments.
         :type kwargs: dict
         :return: A dict with 'folders' and 'documents' keys.
         :rtype: Dict[str, List]
         '''
+
+        # An unrecognized visibility is not an empty list and not a status filter.
+        if visibility is not None:
+            self.verify(
+                expression=visibility in a.core.VISIBILITIES,
+                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
+                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                visibility=visibility,
+            )
 
         # Verify the folder exists.
         self.verify(
@@ -193,16 +323,23 @@ class ListFolderContents(DomainEvent):
             folder_id=folder_id,
         )
 
-        # List child folders and documents.
-        child_folders = self.folder_service.list(parent_id=folder_id)
-        documents = self.document_service.list(folder_id=folder_id)
+        # Pass the access filters to both child lists. parent_id behavior is unchanged.
+        child_folders = self.folder_service.list(
+            parent_id=folder_id,
+            visibility=visibility,
+            owner_id=owner_id,
+        )
+        documents = self.document_service.list(
+            folder_id=folder_id,
+            visibility=visibility,
+            owner_id=owner_id,
+        )
 
         # Return the combined results.
         return {
             'folders': child_folders,
             'documents': documents,
         }
-
 
 # ** event: move_folder
 class MoveFolder(DomainEvent):
@@ -285,7 +422,6 @@ class MoveFolder(DomainEvent):
         # Return the moved folder.
         return folder
 
-
 # ** event: move_document
 class MoveDocument(DomainEvent):
     '''
@@ -343,7 +479,6 @@ class MoveDocument(DomainEvent):
 
         # Return the document identifier.
         return document_id
-
 
 # ** event: remove_folder
 class RemoveFolder(DomainEvent):

@@ -58,6 +58,12 @@ features:
       commands:
         - attribute_id: update_document_event
           name: Update document
+    set_visibility:
+      name: Set Document Visibility
+      description: Set visibility and owner on an existing document
+      commands:
+        - attribute_id: set_document_visibility_event
+          name: Set document visibility
     remove:
       name: Remove Document
       description: Remove a document and its sections
@@ -157,6 +163,12 @@ features:
       commands:
         - attribute_id: get_folder_event
           name: Get folder
+    set_visibility:
+      name: Set Folder Visibility
+      description: Set visibility and owner on an existing folder
+      commands:
+        - attribute_id: set_folder_visibility_event
+          name: Set folder visibility
     contents:
       name: List Folder Contents
       description: List child folders and documents
