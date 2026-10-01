@@ -17,3 +17,12 @@ VISIBILITIES = (
     VISIBILITY_PRIVATE,
     VISIBILITY_RESTRICTED,
 )
+
+# ** constant: document_link_outgoing
+DOCUMENT_LINK_OUTGOING = 'outgoing'
+
+# ** constant: document_link_incoming
+DOCUMENT_LINK_INCOMING = 'incoming'
+
+# ** constant: document_link_both
+DOCUMENT_LINK_BOTH = 'both'

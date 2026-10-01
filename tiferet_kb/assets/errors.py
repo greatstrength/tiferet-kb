@@ -8,6 +8,12 @@ KB_DOCUMENT_NOT_FOUND_ID = 'KB_DOCUMENT_NOT_FOUND'
 # ** constant: kb_document_already_exists_id
 KB_DOCUMENT_ALREADY_EXISTS_ID = 'KB_DOCUMENT_ALREADY_EXISTS'
 
+# ** constant: kb_document_link_already_exists_id
+KB_DOCUMENT_LINK_ALREADY_EXISTS_ID = 'KB_DOCUMENT_LINK_ALREADY_EXISTS'
+
+# ** constant: kb_invalid_document_link_id
+KB_INVALID_DOCUMENT_LINK_ID = 'KB_INVALID_DOCUMENT_LINK'
+
 # ** constant: kb_document_section_not_found_id
 KB_DOCUMENT_SECTION_NOT_FOUND_ID = 'KB_DOCUMENT_SECTION_NOT_FOUND'
 
@@ -123,6 +129,24 @@ DEFAULT_ERRORS = {
         'name': 'Document Already Exists',
         'message': [
             {'lang': 'en_US', 'text': 'Document with ID {id} already exists'}
+        ]
+    },
+
+    # * error: KB_DOCUMENT_LINK_ALREADY_EXISTS
+    KB_DOCUMENT_LINK_ALREADY_EXISTS_ID: {
+        'id': KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
+        'name': 'Document Link Already Exists',
+        'message': [
+            {'lang': 'en_US', 'text': 'Document link already exists: {id}'}
+        ]
+    },
+
+    # * error: KB_INVALID_DOCUMENT_LINK
+    KB_INVALID_DOCUMENT_LINK_ID: {
+        'id': KB_INVALID_DOCUMENT_LINK_ID,
+        'name': 'Invalid Document Link',
+        'message': [
+            {'lang': 'en_US', 'text': 'Invalid document link: {message}'}
         ]
     },
 

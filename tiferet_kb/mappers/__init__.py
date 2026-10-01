@@ -18,6 +18,10 @@ from .document import (
     DocumentPropertyTableObject,
     DocumentSectionNodeObject,
 )
+from .document_link import (
+    DocumentLinkAggregate,
+    DocumentLinkTableObject,
+)
 from .segment import (
     HybridSegmentTableObject,
 )
