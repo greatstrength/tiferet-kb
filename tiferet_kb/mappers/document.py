@@ -14,7 +14,7 @@ from pydantic import Field
 from tiferet.mappers import Aggregate
 from tiferet_h5.mappers import NodeObject, TableObject
 
-from ..domain.document import Document, DocumentProperty, DocumentSection
+from ..domain.document import Document, DocumentProperty, DocumentSection, SectionRevision
 from ..domain.segment import Paragraph
 
 # *** mappers
@@ -499,3 +499,58 @@ class DocumentPropertyTableObject(TableObject):
 
         # Construct and return the table object.
         return cls.model_validate(data)
+
+# ** mapper: section_revision_node_object
+class SectionRevisionNodeObject(NodeObject):
+    '''
+    HDF5 node-attribute header for one section revision.
+
+    The number, heading, content type, and snapshot time live on the
+    revision group. Passages live in a nested segments table of the same
+    row shape as the live section, not in a content string.
+    '''
+
+    # * attribute: document_id
+    document_id: str = Field(default='', description='Parent document UUID.')
+
+    # * attribute: section_id
+    section_id: str = Field(default='', description='Parent section UUID.')
+
+    # * attribute: number
+    number: int = Field(default=1, description='Revision number within the section.')
+
+    # * attribute: created_at
+    created_at: str = Field(default='', description='UTC ISO 8601 snapshot time.')
+
+    # * attribute: title
+    title: str = Field(default='', description='Section heading at snapshot time.')
+
+    # * attribute: content_type
+    content_type: str = Field(default='markdown', description='Content type at snapshot time.')
+
+    # * attribute: _ROLES
+    _ROLES: ClassVar[Dict[str, Dict[str, Any]]] = {
+        'to_model': {},
+        'to_h5.attrs': {
+            'by_alias': True,
+            'exclude': {'document_id', 'section_id'},
+        },
+    }
+
+    # * method: map
+    def map(self, **overrides) -> SectionRevision:
+        '''
+        Map the node attributes to a read-only section revision.
+
+        :param overrides: Additional keyword arguments, including paragraphs.
+        :type overrides: dict
+        :return: A new section revision.
+        :rtype: SectionRevision
+        '''
+
+        # Serialize the header and apply paragraph overrides.
+        data = self.to_primitive(role='to_model')
+        data.update(overrides)
+
+        # Return the read-only revision. It is not an aggregate.
+        return SectionRevision(**data)

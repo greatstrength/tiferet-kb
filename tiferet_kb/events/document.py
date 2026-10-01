@@ -40,6 +40,67 @@ def cleared_owner_id(owner_id: str | None) -> str | None:
     # Keep a non-empty owner exactly as supplied.
     return owner_id
 
+# ** function: copy_paragraphs
+def copy_paragraphs(paragraphs: List) -> List:
+    '''
+    Deep-copy a paragraph list so a snapshot does not share the live list.
+
+    :param paragraphs: The paragraphs to copy.
+    :type paragraphs: List
+    :return: A new list of copied paragraphs.
+    :rtype: List
+    '''
+
+    # Copy each paragraph, including its segments and identifiers.
+    return [paragraph.model_copy(deep=True) for paragraph in paragraphs]
+
+# ** function: revision_number
+def revision_number(value: Any) -> int | None:
+    '''
+    Coerce a revision number, or return None when it is not an integer.
+
+    :param value: The caller-supplied number.
+    :type value: Any
+    :return: The integer, which may be less than 1, or None.
+    :rtype: int | None
+    '''
+
+    # Booleans are integers; they are not revision numbers.
+    if isinstance(value, bool) or value is None:
+        return None
+
+    # Accept an int as given.
+    if isinstance(value, int):
+        return value
+
+    # Accept a numeric string, including a negative one.
+    if isinstance(value, str):
+        text = value.strip()
+        if text.lstrip('-').isdigit() and text not in ('', '-'):
+            return int(text)
+
+    # Any other shape is not a revision number.
+    return None
+
+# ** function: locator_present
+def locator_present(document_id: Any, section_id: Any) -> bool:
+    '''
+    Report whether both identifiers are non-blank strings.
+
+    :param document_id: The document identifier.
+    :type document_id: Any
+    :param section_id: The section identifier.
+    :type section_id: Any
+    :return: True when both are present.
+    :rtype: bool
+    '''
+
+    # A missing or blank identifier must not start a document walk.
+    return (
+        isinstance(document_id, str) and bool(document_id.strip())
+        and isinstance(section_id, str) and bool(section_id.strip())
+    )
+
 # *** events
 
 # ** event: add_document
@@ -760,12 +821,23 @@ class UpdateDocumentSection(DomainEvent):
         )
 
         # Apply the requested update.
-        if attribute == 'title':
+        if attribute == 'content':
+            # Compare parsed passages here. The repository does not decide.
+            parsed = parse_content_to_paragraphs(value or '', section.id)
+            if section.matches_paragraphs(parsed):
+                return section
+
+            # Snapshot the stored passages before they are replaced.
+            self.document_service.append_section_revision(
+                document_id=section.document_id,
+                section_id=section.id,
+                title=section.title,
+                content_type=section.content_type,
+                paragraphs=copy_paragraphs(section.paragraphs),
+            )
+            section.set_paragraphs(parsed)
+        elif attribute == 'title':
             section.rename(value)
-        elif attribute == 'content':
-            # Re-parse the markdown content into paragraphs/segments.
-            paragraphs = parse_content_to_paragraphs(value or '', section.id)
-            section.set_paragraphs(paragraphs)
         elif attribute == 'content_type':
             section.set_content_type(value)
         elif attribute == 'heading_level':
@@ -773,7 +845,7 @@ class UpdateDocumentSection(DomainEvent):
         elif attribute == 'icon':
             section.set_icon(value)
 
-        # Persist the updated section.
+        # Persist the updated section. An identical content write returned above.
         self.document_service.save_section(section)
 
         # Return the updated section.
@@ -1008,3 +1080,165 @@ class RemoveDocumentProperty(DomainEvent):
 
         # Return the name. Absence is success.
         return stored
+
+# ** event: list_document_section_revisions
+class ListDocumentSectionRevisions(DomainEvent):
+    '''
+    Hands back a section's passage snapshots, newest number first.
+
+    The live section is not a row. A section that has never been snapshotted
+    lists as empty.
+    '''
+
+    # * attribute: document_service
+    document_service: DocumentService
+
+    # * init
+    def __init__(self, document_service: DocumentService):
+        '''
+        Initialize the ListDocumentSectionRevisions event.
+
+        :param document_service: The document service for retrieval.
+        :type document_service: DocumentService
+        '''
+
+        # Set the document service dependency.
+        self.document_service = document_service
+
+    # * method: execute
+    def execute(self,
+            id: str | None = None,
+            document_id: str | None = None,
+            **kwargs,
+        ) -> List:
+        '''
+        List revisions for one section, highest number first.
+
+        :param id: The section identifier.
+        :type id: str | None
+        :param document_id: The parent document identifier.
+        :type document_id: str | None
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The section's revisions. Not a markdown string.
+        :rtype: List
+        '''
+
+        # A missing document id must not walk every document group.
+        self.verify(
+            expression=locator_present(document_id, id),
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            message='document_id and section id are required to list revisions.',
+            section_id=id,
+        )
+
+        # A missing section is not an empty history.
+        sections = self.document_service.get_sections(document_id)
+        section = next((item for item in sections if item.id == id), None)
+        self.verify(
+            expression=section is not None,
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            section_id=id,
+        )
+
+        # Return the snapshots. The live section is not an item.
+        return self.document_service.list_section_revisions(document_id, id)
+
+# ** event: restore_document_section_revision
+class RestoreDocumentSectionRevision(DomainEvent):
+    '''
+    Puts a chosen snapshot's paragraphs back on the section.
+
+    The passages that write replaces are snapshotted first, even when they
+    already match the snapshot. The heading and content type stay as they are.
+    '''
+
+    # * attribute: document_service
+    document_service: DocumentService
+
+    # * init
+    def __init__(self, document_service: DocumentService):
+        '''
+        Initialize the RestoreDocumentSectionRevision event.
+
+        :param document_service: The document service for retrieval and persistence.
+        :type document_service: DocumentService
+        '''
+
+        # Set the document service dependency.
+        self.document_service = document_service
+
+    # * method: execute
+    def execute(self,
+            id: str | None = None,
+            document_id: str | None = None,
+            number: Any = None,
+            **kwargs,
+        ) -> DocumentSection:
+        '''
+        Restore a section's paragraphs from a numbered revision.
+
+        :param id: The section identifier.
+        :type id: str | None
+        :param document_id: The parent document identifier.
+        :type document_id: str | None
+        :param number: The revision number to restore.
+        :type number: Any
+        :param kwargs: Additional keyword arguments.
+        :type kwargs: dict
+        :return: The section with the snapshot's paragraphs.
+        :rtype: DocumentSection
+        '''
+
+        # A missing document id must not walk every document group.
+        self.verify(
+            expression=locator_present(document_id, id),
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            message='document_id and section id are required to restore a revision.',
+            section_id=id,
+        )
+
+        # A missing section writes nothing.
+        sections = self.document_service.get_sections(document_id)
+        section = next((item for item in sections if item.id == id), None)
+        self.verify(
+            expression=section is not None,
+            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            section_id=id,
+        )
+
+        # A missing or non-positive number is not a revision.
+        chosen = revision_number(number)
+        self.verify(
+            expression=chosen is not None and chosen >= 1,
+            error_code=a.errors.KB_SECTION_REVISION_NOT_FOUND_ID,
+            message=f'Section revision not found: {number}',
+            section_id=id,
+            number=number,
+        )
+
+        # Load the named snapshot before any write.
+        revision = self.document_service.get_section_revision(document_id, id, chosen)
+        self.verify(
+            expression=revision is not None,
+            error_code=a.errors.KB_SECTION_REVISION_NOT_FOUND_ID,
+            message=f'Section revision not found: {chosen}',
+            section_id=id,
+            number=chosen,
+        )
+
+        # Snapshot the current passages first, even when the words already match.
+        self.document_service.append_section_revision(
+            document_id=section.document_id,
+            section_id=section.id,
+            title=section.title,
+            content_type=section.content_type,
+            paragraphs=copy_paragraphs(section.paragraphs),
+        )
+
+        # Put the snapshot's paragraph model back, identifiers included.
+        section.set_paragraphs(copy_paragraphs(revision.paragraphs))
+        self.document_service.save_section(section)
+
+        # Return the section. Heading, icon, and position were not written.
+        return section

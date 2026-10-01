@@ -17,6 +17,9 @@ KB_INVALID_DOCUMENT_LINK_ID = 'KB_INVALID_DOCUMENT_LINK'
 # ** constant: kb_document_section_not_found_id
 KB_DOCUMENT_SECTION_NOT_FOUND_ID = 'KB_DOCUMENT_SECTION_NOT_FOUND'
 
+# ** constant: kb_section_revision_not_found_id
+KB_SECTION_REVISION_NOT_FOUND_ID = 'KB_SECTION_REVISION_NOT_FOUND'
+
 # ** constant: kb_invalid_document_status_id
 KB_INVALID_DOCUMENT_STATUS_ID = 'KB_INVALID_DOCUMENT_STATUS'
 
@@ -156,6 +159,15 @@ DEFAULT_ERRORS = {
         'name': 'Document Section Not Found',
         'message': [
             {'lang': 'en_US', 'text': 'Document section not found: {section_id}'}
+        ]
+    },
+
+    # * error: KB_SECTION_REVISION_NOT_FOUND
+    KB_SECTION_REVISION_NOT_FOUND_ID: {
+        'id': KB_SECTION_REVISION_NOT_FOUND_ID,
+        'name': 'Section Revision Not Found',
+        'message': [
+            {'lang': 'en_US', 'text': 'Section revision not found: {number}'}
         ]
     },
 

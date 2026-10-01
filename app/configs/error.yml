@@ -24,6 +24,11 @@ errors:
     message:
       - lang: en_US
         text: 'Document section not found: {section_id}'
+  kb_section_revision_not_found:
+    name: Section Revision Not Found
+    message:
+      - lang: en_US
+        text: 'Section revision not found: {number}'
   kb_invalid_document_status:
     name: Invalid Document Status
     message:
