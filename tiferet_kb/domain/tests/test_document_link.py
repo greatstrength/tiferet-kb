@@ -6,13 +6,13 @@
 import pytest
 
 # ** app
-from ...assets.core import (
+from ..document import Document
+from ..document_link import (
     DOCUMENT_LINK_REFERENCES,
     DOCUMENT_LINK_RELATED_TO,
     DOCUMENT_LINK_SUPERSEDES,
+    DocumentLink,
 )
-from ..document import Document
-from ..document_link import DocumentLink
 
 # *** tests
 

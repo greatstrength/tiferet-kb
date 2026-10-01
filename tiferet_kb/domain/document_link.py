@@ -13,11 +13,16 @@ from pydantic import Field, model_validator
 # ** app
 from tiferet.domain import DomainObject
 
-from ..assets.core import (
-    DOCUMENT_LINK_REFERENCES,
-    DOCUMENT_LINK_RELATED_TO,
-    DOCUMENT_LINK_SUPERSEDES,
-)
+# *** constants
+
+# ** constant: document_link_references
+DOCUMENT_LINK_REFERENCES = 'references'
+
+# ** constant: document_link_supersedes
+DOCUMENT_LINK_SUPERSEDES = 'supersedes'
+
+# ** constant: document_link_related_to
+DOCUMENT_LINK_RELATED_TO = 'related_to'
 
 # *** models
 

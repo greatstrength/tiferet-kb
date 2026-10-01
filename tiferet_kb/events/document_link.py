@@ -9,12 +9,12 @@ from typing import List
 from tiferet.events import DomainEvent
 
 from .. import a
-from ..assets.core import (
+from ..domain.document_link import (
     DOCUMENT_LINK_REFERENCES,
     DOCUMENT_LINK_RELATED_TO,
     DOCUMENT_LINK_SUPERSEDES,
+    DocumentLink,
 )
-from ..domain.document_link import DocumentLink
 from ..interfaces.document import DocumentService
 from ..mappers.document_link import DocumentLinkAggregate, DocumentLinkTableObject
 

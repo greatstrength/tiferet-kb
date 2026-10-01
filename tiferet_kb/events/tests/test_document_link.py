@@ -14,16 +14,16 @@ from unittest import mock
 from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
-from ...assets.core import (
-    DOCUMENT_LINK_REFERENCES,
-    DOCUMENT_LINK_RELATED_TO,
-    DOCUMENT_LINK_SUPERSEDES,
-)
 from ...assets.errors import (
     DEFAULT_ERRORS,
     KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_LINK_ID,
+)
+from ...domain.document_link import (
+    DOCUMENT_LINK_REFERENCES,
+    DOCUMENT_LINK_RELATED_TO,
+    DOCUMENT_LINK_SUPERSEDES,
 )
 from ...interfaces.document import DocumentService
 from ...mappers.document_link import DocumentLinkTableObject

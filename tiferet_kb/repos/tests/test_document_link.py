@@ -12,15 +12,15 @@ from tiferet.events import DomainEvent
 from tiferet_h5.utils import H5Client
 
 # ** app
-from ...assets.core import (
-    DOCUMENT_LINK_REFERENCES,
-    DOCUMENT_LINK_RELATED_TO,
-    DOCUMENT_LINK_SUPERSEDES,
-)
 from ...assets.errors import (
     KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_LINK_ID,
+)
+from ...domain.document_link import (
+    DOCUMENT_LINK_REFERENCES,
+    DOCUMENT_LINK_RELATED_TO,
+    DOCUMENT_LINK_SUPERSEDES,
 )
 from ...domain.segment import Paragraph, TextSegment
 from ...events.document import GetDocument, ListDocuments, RemoveDocument
