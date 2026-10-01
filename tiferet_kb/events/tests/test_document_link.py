@@ -68,11 +68,9 @@ def test_add_strips_type_and_derives_id(mock_document_service):
 @pytest.mark.parametrize('link_type', [
     DOCUMENT_LINK_SUPERSEDES,
     DOCUMENT_LINK_RELATED_TO,
-    'cites',
-    'References',
 ])
-def test_add_keeps_documented_and_open_types(mock_document_service, link_type):
-    '''Documented names and any other fitting string are stored unchanged.'''
+def test_add_keeps_documented_types(mock_document_service, link_type):
+    '''The documented names are stored unchanged.'''
 
     result = DomainEvent.handle(
         AddDocumentLink,
@@ -122,7 +120,7 @@ def test_add_self_link_after_both_exist(mock_document_service):
     mock_document_service.add_link.assert_not_called()
 
 # ** test: add_rejects_empty_or_overlong_type
-@pytest.mark.parametrize('link_type', ['', '   ', None])
+@pytest.mark.parametrize('link_type', ['', '   ', None, 'cites', 'References'])
 def test_add_rejects_empty_type(mock_document_service, link_type):
     '''An empty or whitespace type is invalid and writes nothing.'''
 

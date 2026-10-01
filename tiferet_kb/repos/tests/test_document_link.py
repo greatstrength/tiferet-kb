@@ -140,8 +140,8 @@ def test_int_add_stores_one_row(doc_repo, h5_file):
         assert h5.get_node_attr(DOCUMENT_LINKS_TABLE, 'schema_version') == DocumentLinkTableObject.schema_fingerprint()
 
 # ** test_int: documented_and_open_types_are_stored_unchanged
-def test_int_documented_and_open_types_are_stored_unchanged(doc_repo):
-    '''supersedes, related_to, and an open string are stored as given.'''
+def test_int_documented_types_are_stored_unchanged(doc_repo, h5_file):
+    '''The documented names are stored as given. Any other string is rejected.'''
 
     save_doc(doc_repo, 'doc-001')
     save_doc(doc_repo, 'doc-002')
@@ -149,10 +149,17 @@ def test_int_documented_and_open_types_are_stored_unchanged(doc_repo):
 
     supersedes = add(doc_repo, 'doc-001', 'doc-002', DOCUMENT_LINK_SUPERSEDES)
     related = add(doc_repo, 'doc-001', 'doc-003', DOCUMENT_LINK_RELATED_TO)
-    custom = add(doc_repo, 'doc-002', 'doc-003', 'cites')
     assert supersedes.link_type == 'supersedes'
     assert related.link_type == 'related_to'
-    assert custom.link_type == 'cites'
+
+    with pytest.raises(TiferetError) as exc_info:
+        add(doc_repo, 'doc-002', 'doc-003', 'cites')
+    assert exc_info.value.error_code == KB_INVALID_DOCUMENT_LINK_ID
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert {row['link_type'] for row in h5.read_rows(DOCUMENT_LINKS_TABLE)} == {
+            'supersedes',
+            'related_to',
+        }
 
 # ** test_int: add_missing_endpoint_stores_nothing
 def test_int_add_missing_endpoint_stores_nothing(doc_repo, h5_file):
@@ -188,9 +195,8 @@ def test_int_overlong_values_are_not_clipped(doc_repo, h5_file):
 
     save_doc(doc_repo, 'doc-001')
     save_doc(doc_repo, 'doc-002')
-    fitting = 'y' * DocumentLinkTableObject.type_width()
-    stored = add(doc_repo, 'doc-001', 'doc-002', fitting)
-    assert stored.link_type == fitting
+    stored = add(doc_repo, 'doc-001', 'doc-002', DOCUMENT_LINK_REFERENCES)
+    assert stored.link_type == DOCUMENT_LINK_REFERENCES
 
     with pytest.raises(TiferetError) as type_error:
         add(doc_repo, 'doc-002', 'doc-001', 'z' * (DocumentLinkTableObject.type_width() + 1))
@@ -201,7 +207,7 @@ def test_int_overlong_values_are_not_clipped(doc_repo, h5_file):
             doc_repo,
             'doc-002',
             'doc-001',
-            'other',
+            DOCUMENT_LINK_SUPERSEDES,
             link_id='i' * (DocumentLinkTableObject.identifier_width() + 1),
         )
     assert id_error.value.error_code == KB_INVALID_DOCUMENT_LINK_ID
@@ -209,7 +215,7 @@ def test_int_overlong_values_are_not_clipped(doc_repo, h5_file):
     with H5Client(path=h5_file, mode='r') as h5:
         rows = h5.read_rows(DOCUMENT_LINKS_TABLE)
         assert len(rows) == 1
-        assert rows[0]['link_type'] == fitting
+        assert rows[0]['link_type'] == DOCUMENT_LINK_REFERENCES
 
 # ** test_int: duplicate_triple_and_id_are_refused
 def test_int_duplicate_triple_and_id_are_refused(doc_repo):
@@ -261,7 +267,7 @@ def test_int_list_direction_order_and_filter(doc_repo):
     ))
     doc_repo.add_link(DocumentLinkAggregate(
         id='a-link', source_id='doc-001', target_id='doc-003',
-        link_type='cites', created_at='2026-01-01T00:00:00+00:00',
+        link_type='supersedes', created_at='2026-01-01T00:00:00+00:00',
     ))
     doc_repo.add_link(DocumentLinkAggregate(
         id='c-link', source_id='doc-001', target_id='doc-002',

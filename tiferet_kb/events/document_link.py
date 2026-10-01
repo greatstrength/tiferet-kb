@@ -9,6 +9,11 @@ from typing import List
 from tiferet.events import DomainEvent
 
 from .. import a
+from ..assets.core import (
+    DOCUMENT_LINK_REFERENCES,
+    DOCUMENT_LINK_RELATED_TO,
+    DOCUMENT_LINK_SUPERSEDES,
+)
 from ..domain.document_link import DocumentLink
 from ..interfaces.document import DocumentService
 from ..mappers.document_link import DocumentLinkAggregate, DocumentLinkTableObject
@@ -44,9 +49,8 @@ class AddDocumentLink(DocumentLinkEvent):
     '''
     Event to store one directional link between two documents in this file.
 
-    The type is an open string. The documented names are published as
-    constants; any other non-empty string that fits the column is stored
-    as given. Add does not write the reverse row.
+    The type is one of the documented names, declared as a Literal.
+    Case is not folded. Add does not write the reverse row.
     '''
 
     # * method: execute
@@ -84,9 +88,14 @@ class AddDocumentLink(DocumentLinkEvent):
         else:
             link_type = link_type.strip()
 
-        # Reject an empty type or one that would be clipped to the title width.
+        # The stored type is one of the documented names. Case is not folded.
+        documented = {
+            DOCUMENT_LINK_REFERENCES,
+            DOCUMENT_LINK_SUPERSEDES,
+            DOCUMENT_LINK_RELATED_TO,
+        }
         self.verify(
-            expression=bool(link_type) and DocumentLinkTableObject.value_fits(
+            expression=link_type in documented and DocumentLinkTableObject.value_fits(
                 link_type,
                 DocumentLinkTableObject.type_width(),
             ),

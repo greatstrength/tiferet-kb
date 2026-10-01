@@ -4,7 +4,7 @@
 
 # ** core
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 # ** infra
@@ -12,6 +12,12 @@ from pydantic import Field, model_validator
 
 # ** app
 from tiferet.domain import DomainObject
+
+from ..assets.core import (
+    DOCUMENT_LINK_REFERENCES,
+    DOCUMENT_LINK_RELATED_TO,
+    DOCUMENT_LINK_SUPERSEDES,
+)
 
 # *** models
 
@@ -44,9 +50,13 @@ class DocumentLink(DomainObject):
     )
 
     # * attribute: link_type
-    link_type: str = Field(
+    link_type: Literal[
+        DOCUMENT_LINK_REFERENCES,
+        DOCUMENT_LINK_SUPERSEDES,
+        DOCUMENT_LINK_RELATED_TO,
+    ] = Field(
         ...,
-        description='Open relationship name. Documented names are references, supersedes, and related_to.',
+        description='Documented relationship: references, supersedes, or related_to.',
     )
 
     # * attribute: created_at
@@ -62,9 +72,8 @@ class DocumentLink(DomainObject):
         '''
         Derive id and created_at when absent, and strip the link type.
 
-        The type is an open string. Stripping the ends keeps a trailing
-        space from storing a second spelling of the same type. Case is
-        left as given.
+        Stripping the ends keeps a trailing space from missing the
+        documented name. Case is left as given.
 
         :param data: The raw input data.
         :type data: Any

@@ -39,33 +39,33 @@ def test_document_link_preserves_explicit_id():
         id='link-001',
         source_id='doc-001',
         target_id='doc-002',
-        link_type='cites',
+        link_type=DOCUMENT_LINK_SUPERSEDES,
         created_at='2026-01-01T00:00:00+00:00',
     )
     assert link.id == 'link-001'
     assert link.created_at == '2026-01-01T00:00:00+00:00'
-    assert link.link_type == 'cites'
+    assert link.link_type == 'supersedes'
 
 # ** test: document_link_strips_type_and_keeps_case
 def test_document_link_strips_type_and_keeps_case():
-    '''Ends are stripped. Case is not folded.'''
+    '''Ends are stripped. A different case is not a documented name.'''
 
     stripped = DocumentLink(
         source_id='doc-001',
         target_id='doc-002',
         link_type='  references  ',
     )
-    kept = DocumentLink(
-        source_id='doc-001',
-        target_id='doc-002',
-        link_type='References',
-    )
     assert stripped.link_type == 'references'
-    assert kept.link_type == 'References'
+    with pytest.raises(Exception):
+        DocumentLink(
+            source_id='doc-001',
+            target_id='doc-002',
+            link_type='References',
+        )
 
 # ** test: documented_type_constants
 def test_documented_type_constants():
-    '''The three documented names are constants, not a closed set.'''
+    '''The three documented names are the Literal values.'''
 
     assert DOCUMENT_LINK_REFERENCES == 'references'
     assert DOCUMENT_LINK_SUPERSEDES == 'supersedes'
@@ -77,6 +77,17 @@ def test_document_does_not_gain_links_or_content():
 
     assert 'links' not in Document.model_fields
     assert 'content' not in Document.model_fields
+
+# ** test: document_link_rejects_extra_fields
+def test_document_link_rejects_undocumented_type():
+    '''A type outside the documented Literal set is rejected.'''
+
+    with pytest.raises(Exception):
+        DocumentLink(
+            source_id='doc-001',
+            target_id='doc-002',
+            link_type='cites',
+        )
 
 # ** test: document_link_rejects_extra_fields
 def test_document_link_rejects_extra_fields():
