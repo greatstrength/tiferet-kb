@@ -7,6 +7,10 @@ from .category import (
     CategoryAggregate,
     CategoryNodeObject,
 )
+from .comment import (
+    SectionCommentAggregate,
+    SectionCommentTableObject,
+)
 from .document import (
     DocumentAggregate,
     DocumentSectionAggregate,

@@ -18,6 +18,7 @@ from .. import a
 from ..interfaces.document import DocumentService
 from ..domain.document import DocumentProperty
 from ..domain.segment import TextSegment, Paragraph
+from ..mappers.comment import SectionCommentAggregate, SectionCommentTableObject
 from ..mappers.document import (
     DocumentAggregate,
     DocumentSectionAggregate,
@@ -38,6 +39,9 @@ DOCUMENTS_TABLE = '/kb/documents/documents'
 
 # ** constant: document_properties_table
 DOCUMENT_PROPERTIES_TABLE = '/kb/documents/document_properties'
+
+# ** constant: section_comments_table
+SECTION_COMMENTS_TABLE = '/kb/documents/section_comments'
 
 # ** constant: embeddings_array
 EMBEDDINGS_ARRAY = '/kb/documents/section_embeddings'
@@ -71,8 +75,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
     come from ``DocumentSectionNodeObject`` and which holds a nested
     ``segments`` table (``HybridSegmentTableObject``).  Embeddings are two
     parallel arrays, ``section_embeddings`` and ``section_embedding_ids``.
-    The ``get()`` method joins the header row and section groups to return
-    a fully-populated aggregate.
+    Section comments are rows in the sibling table ``section_comments``,
+    not children of the section group, so a passage rewrite does not remove
+    them.  The ``get()`` method joins the header row and section groups to return
+    a fully-populated aggregate. It does not attach comments.
 
     This class stays on ``H5Repository`` and does not inherit
     ``TableRepository`` or ``NodeRepository``: the header is a table, the
@@ -421,7 +427,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
     def delete(self, id: str) -> None:
         '''
         Delete a document and all its sections by ID (idempotent, cascading).
-        Also removes any embeddings associated with the document's sections.
+        Also removes embeddings for the document's sections and every comment
+        row with that document id. Comment rows are not under the document group.
 
         :param id: The document identifier.
         :type id: str
@@ -456,6 +463,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if section_ids:
                 self._remove_embeddings_by_section_ids(h5, section_ids)
 
+            # Cascade comments by document id. Recursive group removal does not reach this table.
+            self._remove_comment_rows(h5, document_id=id)
+
     # * method: get_sections
     def get_sections(self, document_id: str) -> List[DocumentSectionAggregate]:
         '''
@@ -479,7 +489,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         segments table containing denormalized paragraph data.  When the
         group already exists it is kept: attributes are written onto it and
         only the ``segments`` table is replaced, so any other child of the
-        section group survives a passage rewrite.
+        section group survives a passage rewrite. Section comments are not
+        read or written here.
 
         :param section: The document section aggregate to save.
         :type section: DocumentSectionAggregate
@@ -536,7 +547,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
     def delete_section(self, section_id: str, document_id: str = None) -> None:
         '''
         Delete a document section by ID (idempotent).
-        Also removes any embedding associated with the section.
+        Also removes any embedding associated with the section, and every
+        comment row with that section id, including when the section group
+        is already gone.
 
         :param section_id: The section identifier.
         :type section_id: str
@@ -547,6 +560,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
         '''
 
         with self.client() as h5:
+
+            # Cascade comments first, including when the section group is already gone.
+            self._remove_comment_rows(h5, section_id=section_id)
 
             # Find and remove the section group.
             if document_id:
@@ -563,6 +579,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
     def reorder_sections(self, document_id: str, section_ids: List[str]) -> None:
         '''
         Reorder sections within a document by updating position attributes.
+        Does not read or write section comments.
 
         :param document_id: The parent document identifier.
         :type document_id: str
@@ -585,6 +602,132 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 section_path = f'{sections_group}/{section_id}'
                 if h5.node_exists(section_path):
                     h5.set_node_attr(section_path, 'position', position)
+
+    # * method: add_comment
+    def add_comment(self, comment: SectionCommentAggregate) -> bool:
+        '''
+        Insert a section comment row. Does not replace an existing id.
+
+        Creates ``/kb/documents/section_comments`` on the first insert, the
+        same way the header table is created when missing. Row removal is
+        not this method.
+
+        :param comment: The comment aggregate to insert.
+        :type comment: SectionCommentAggregate
+        :return: True if the row was inserted, False if the id already exists.
+        :rtype: bool
+        '''
+
+        # Convert before opening the file so a duplicate returns without a second write.
+        table_obj = SectionCommentTableObject.from_model(comment)
+
+        with self.client() as h5:
+
+            # A duplicate id is not an upsert.
+            if h5.node_exists(SECTION_COMMENTS_TABLE):
+                existing = h5.read_rows(
+                    SECTION_COMMENTS_TABLE,
+                    condition=f'(id == b"{comment.id}")',
+                )
+                if existing:
+                    return False
+
+            # Create the sibling table on first insert, stamping schema_version only then.
+            self._ensure_group(h5)
+            table = self.table_repo.ensure_table(
+                h5,
+                SECTION_COMMENTS_TABLE,
+                SectionCommentTableObject,
+                title='Section Comments',
+            )
+
+            # Append the row. Do not replace text.
+            table_obj.to_row(table)
+            table.flush()
+
+        # The id was not already stored.
+        return True
+
+    # * method: list_comments
+    def list_comments(self, section_id: str) -> List[SectionCommentAggregate]:
+        '''
+        List comments on a section, ordered by stored created_at then id.
+
+        A missing file or table is an empty list and does not create the file.
+        The strings are sorted as stored. Timestamps are not parsed.
+
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: A flat list of comment aggregates.
+        :rtype: List[SectionCommentAggregate]
+        '''
+
+        # A read must not create the file.
+        if not self.file_exists():
+            return []
+
+        with self.client() as h5:
+
+            # No table yet means no comments.
+            if not h5.node_exists(SECTION_COMMENTS_TABLE):
+                return []
+
+            # Read this section's rows and sort the stored strings.
+            rows = h5.read_rows(
+                SECTION_COMMENTS_TABLE,
+                condition=f'(section_id == b"{section_id}")',
+            )
+            comments = [SectionCommentTableObject.from_row(row).map() for row in rows]
+            comments.sort(key=lambda item: (item.created_at, item.id))
+
+        # Return the flat list. There is no nested replies field.
+        return comments
+
+    # * method: delete_comment
+    def delete_comment(self, id: str) -> Optional[bool]:
+        '''
+        Delete one comment row when nothing replies to it.
+
+        Uses row removal. Does not call ``remove_node``. A missing file is
+        not created.
+
+        :param id: The comment identifier.
+        :type id: str
+        :return: True if deleted, None if not stored, False if a reply names it.
+        :rtype: bool | None
+        '''
+
+        # An unknown id on a missing file is not an error and must not create the file.
+        if not self.file_exists():
+            return None
+
+        with self.client() as h5:
+
+            # No table means the id is not stored.
+            if not h5.node_exists(SECTION_COMMENTS_TABLE):
+                return None
+
+            # Refuse while any row still names this id. Delete nothing.
+            replies = h5.read_rows(
+                SECTION_COMMENTS_TABLE,
+                condition=f'(parent_id == b"{id}")',
+            )
+            if replies:
+                return False
+
+            # An unknown id is a no-op.
+            existing = h5.read_rows(
+                SECTION_COMMENTS_TABLE,
+                condition=f'(id == b"{id}")',
+            )
+            if not existing:
+                return None
+
+            # Remove that row only.
+            h5.remove_rows(SECTION_COMMENTS_TABLE, f'(id == b"{id}")')
+
+        # The row was deleted.
+        return True
 
     # * method: embed_section
     def embed_section(self,
@@ -868,6 +1011,42 @@ class DocumentH5Repository(H5Repository, DocumentService):
         if mask.any():
             h5.create_array(EMBEDDINGS_ARRAY, embeddings[mask], title='Section Embeddings')
             h5.create_array(EMBEDDING_IDS_ARRAY, ids_raw[mask], title='Section Embedding IDs')
+
+    # * method: _remove_comment_rows
+    def _remove_comment_rows(self,
+            h5,
+            section_id: str = None,
+            document_id: str = None,
+        ) -> None:
+        '''
+        Remove comment rows by section id or document id.
+
+        Called within an already-open ``h5`` context. Uses row removal, not
+        ``remove_node``. A missing table is a no-op.
+
+        :param h5: The open H5Client instance.
+        :param section_id: When set, remove rows with this section id.
+        :type section_id: str
+        :param document_id: When set and section_id is not, remove rows with this document id.
+        :type document_id: str
+        :return: None
+        :rtype: None
+        '''
+
+        # Nothing to remove when the table has not been created.
+        if not h5.node_exists(SECTION_COMMENTS_TABLE):
+            return
+
+        # Section delete and document delete filter different columns.
+        if section_id:
+            condition = f'(section_id == b"{section_id}")'
+        elif document_id:
+            condition = f'(document_id == b"{document_id}")'
+        else:
+            return
+
+        # Remove matching rows. A sibling table is not under the document group.
+        h5.remove_rows(SECTION_COMMENTS_TABLE, condition)
 
     # * method: _ensure_path
     def _ensure_path(self, h5, path: str) -> None:

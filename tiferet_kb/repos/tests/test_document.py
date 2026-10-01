@@ -15,6 +15,7 @@ from tiferet_h5.repos import NodeRepository, TableRepository
 from tiferet_h5.utils import H5Client
 
 # ** app
+from ...mappers.comment import SectionCommentAggregate
 from ...mappers.document import (
     DocumentAggregate,
     DocumentSectionAggregate,
@@ -26,6 +27,7 @@ from ..document import (
     DOCUMENTS_TABLE,
     EMBEDDINGS_ARRAY,
     EMBEDDING_IDS_ARRAY,
+    SECTION_COMMENTS_TABLE,
     DocumentH5Repository,
 )
 
@@ -858,3 +860,165 @@ def test_int_list_rejects_unknown_visibility(doc_repo):
         doc_repo.list(visibility='draft')
     assert exc_info.value.error_code == 'KB_INVALID_VISIBILITY'
     assert 'status' not in exc_info.value.kwargs.get('message', str(exc_info.value))
+
+# ** test_int: list_comments_missing_file_does_not_create
+def test_int_list_comments_missing_file_does_not_create(doc_repo, h5_file):
+    '''A comment read on a missing file returns empty and does not create the file.'''
+
+    assert doc_repo.list_comments('sec-001') == []
+    assert doc_repo.delete_comment('missing') is None
+    assert not os.path.exists(h5_file)
+
+# ** test_int: comments_sort_by_stored_strings
+def test_int_comments_sort_by_stored_strings(doc_repo):
+    '''List sorts stored created_at then id, and does not nest replies.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='b-id', document_id='doc-001', section_id='sec-001',
+        author='ada', text='later id', created_at='9',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='a-id', document_id='doc-001', section_id='sec-001',
+        author='ada', text='same time', created_at='9', parent_id='b-id',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='z-id', document_id='doc-001', section_id='sec-001',
+        author='ada', text='string-sorts first', created_at='10',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='other', document_id='doc-001', section_id='sec-002',
+        author='ada', text='other section', created_at='1',
+    ))
+
+    listed = doc_repo.list_comments('sec-001')
+    assert [item.id for item in listed] == ['z-id', 'a-id', 'b-id']
+    assert listed[1].parent_id == 'b-id'
+    assert 'replies' not in type(listed[1]).model_fields
+
+# ** test_int: duplicate_comment_does_not_replace_text
+def test_int_duplicate_comment_does_not_replace_text(doc_repo):
+    '''A second insert of the same id leaves the stored text unchanged.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-001', document_id='doc-001', section_id='sec-001',
+        author='ada', text='original', created_at='2026-01-01T00:00:00+00:00',
+    ))
+    inserted = doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-001', document_id='doc-001', section_id='sec-001',
+        author='ada', text='replacement', created_at='2026-01-02T00:00:00+00:00',
+    ))
+    assert inserted is False
+    assert doc_repo.list_comments('sec-001')[0].text == 'original'
+
+# ** test_int: delete_comment_refuses_while_replies_remain
+def test_int_delete_comment_refuses_while_replies_remain(doc_repo):
+    '''Removing a parent leaves both rows; removing the reply then the parent deletes each row only.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-1', document_id='doc-001', section_id='sec-001',
+        author='ada', text='parent', created_at='2026-01-01T00:00:00+00:00',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-2', document_id='doc-001', section_id='sec-001',
+        author='ada', text='reply', parent_id='cmt-1', created_at='2026-01-02T00:00:00+00:00',
+    ))
+
+    assert doc_repo.delete_comment('cmt-1') is False
+    assert {item.id for item in doc_repo.list_comments('sec-001')} == {'cmt-1', 'cmt-2'}
+
+    assert doc_repo.delete_comment('cmt-2') is True
+    assert [item.id for item in doc_repo.list_comments('sec-001')] == ['cmt-1']
+    assert doc_repo.delete_comment('cmt-1') is True
+    assert doc_repo.list_comments('sec-001') == []
+    assert doc_repo.delete_comment('cmt-1') is None
+
+# ** test_int: delete_section_cascades_comments_even_when_group_is_gone
+def test_int_delete_section_cascades_comments_even_when_group_is_gone(doc_repo, h5_file):
+    '''Section delete removes that section's comments and leaves other sections' comments.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='gone', document_id='doc-001', section_id='sec-gone',
+        author='ada', text='cascade me', created_at='2026-01-01T00:00:00+00:00',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='keep', document_id='doc-001', section_id='sec-keep',
+        author='ada', text='stay', created_at='2026-01-01T00:00:00+00:00',
+    ))
+
+    doc_repo.delete_section('sec-gone')
+
+    assert doc_repo.list_comments('sec-gone') == []
+    assert [item.id for item in doc_repo.list_comments('sec-keep')] == ['keep']
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.node_exists(SECTION_COMMENTS_TABLE)
+        assert not h5.node_exists('/kb/documents/doc-001/sections/sec-gone')
+
+# ** test_int: delete_document_cascades_comments
+def test_int_delete_document_cascades_comments(doc_repo):
+    '''Document delete removes that document's comments and leaves other documents' comments.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='mine', document_id='doc-001', section_id='sec-001',
+        author='ada', text='mine', created_at='2026-01-01T00:00:00+00:00',
+    ))
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='theirs', document_id='doc-002', section_id='sec-002',
+        author='ada', text='theirs', created_at='2026-01-01T00:00:00+00:00',
+    ))
+
+    doc_repo.delete('doc-001')
+
+    assert doc_repo.list_comments('sec-001') == []
+    assert [item.id for item in doc_repo.list_comments('sec-002')] == ['theirs']
+
+# ** test_int: save_and_reorder_leave_comments
+def test_int_save_and_reorder_leave_comments(doc_repo, sample_document, sample_section):
+    '''A passage rewrite and a reorder do not change the section's comments.'''
+
+    doc_repo.save(sample_document)
+    doc_repo.save_section(sample_section)
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-001', document_id='doc-001', section_id='sec-001',
+        author='ada', text='survives rewrite', created_at='2026-01-01T00:00:00+00:00',
+    ))
+
+    sample_section.set_paragraphs(parse_content_to_paragraphs('Rewritten passage.', 'sec-001'))
+    doc_repo.save_section(sample_section)
+    doc_repo.reorder_sections('doc-001', ['sec-001'])
+
+    listed = doc_repo.list_comments('sec-001')
+    assert len(listed) == 1
+    assert listed[0].text == 'survives rewrite'
+    assert doc_repo.get_sections('doc-001')[0].paragraphs[0].segments[0].text == 'Rewritten passage.'
+
+# ** test_int: comment_row_removal_does_not_call_remove_node
+def test_int_comment_row_removal_does_not_call_remove_node(doc_repo, h5_file):
+    '''Comment row removal uses remove_rows, never remove_node on the comments table.'''
+
+    doc_repo.add_comment(SectionCommentAggregate(
+        id='cmt-001', document_id='doc-001', section_id='sec-001',
+        author='ada', text='note', created_at='2026-01-01T00:00:00+00:00',
+    ))
+    removed = []
+    original = doc_repo.node_repo.remove_node
+
+    def spy(h5, path, recursive=False):
+        removed.append(path)
+        return original(h5, path, recursive=recursive)
+
+    doc_repo.node_repo.remove_node = spy
+    assert doc_repo.delete_comment('cmt-001') is True
+    doc_repo.delete_section('sec-001')
+    doc_repo.delete('doc-001')
+
+    assert SECTION_COMMENTS_TABLE not in removed
+    comment_source = inspect.getsource(DocumentH5Repository.delete_comment)
+    cascade_source = inspect.getsource(DocumentH5Repository._remove_comment_rows)
+    assert 'self.node_repo.remove_node' not in comment_source
+    assert 'h5.h5file.remove_node' not in comment_source
+    assert 'self.node_repo.remove_node' not in cascade_source
+    assert 'h5.h5file.remove_node' not in cascade_source
+    assert 'remove_rows' in cascade_source
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.node_exists(SECTION_COMMENTS_TABLE)
+        assert not any(row['id'] == 'cmt-001' for row in h5.read_rows(SECTION_COMMENTS_TABLE))

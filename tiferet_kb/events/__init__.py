@@ -10,6 +10,11 @@ from .category import (
     UpdateCategory,
     RemoveCategory,
 )
+from .comment import (
+    AddSectionComment,
+    ListSectionComments,
+    RemoveSectionComment,
+)
 from .document import (
     AddDocument,
     GetDocument,
