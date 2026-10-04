@@ -34,6 +34,8 @@ try:
     from .events import (
         EmbedDocumentSections,
         SearchSimilarSections,
+        SearchKeywordSections,
+        SearchComposedSections,
         RemoveEmbedding,
         ImportMarkdownDocument,
         ExportDocumentMarkdown,

@@ -38,6 +38,10 @@ from .folder import (
     FolderAggregate,
     FolderNodeObject,
 )
+from .keyword import (
+    KeywordPostingTableObject,
+    KeywordStatsTableObject,
+)
 from .tag import (
     TagAggregate,
     TagNodeObject,

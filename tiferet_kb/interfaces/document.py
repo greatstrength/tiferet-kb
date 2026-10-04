@@ -4,7 +4,7 @@
 
 # ** core
 from abc import abstractmethod
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 # ** app
 from tiferet.interfaces import Service
@@ -257,6 +257,65 @@ class DocumentService(Service):
         :rtype: List
         '''
         raise NotImplementedError('search_similar method is required for DocumentService.')
+
+    # * method: search_keyword
+    @abstractmethod
+    def search_keyword(self,
+            query: str,
+            limit: int = 5,
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Search sections by the words in their rendered bodies.
+
+        :param query: The query string.
+        :type query: str
+        :param limit: Maximum number of results to return, after filters.
+        :type limit: int
+        :param folder_id: Optional folder identifier to filter by.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier to filter by.
+        :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
+        :return: A list of dicts with section_id and BM25 score.
+        :rtype: List[Dict]
+        '''
+        raise NotImplementedError('search_keyword method is required for DocumentService.')
+
+    # * method: search_composed
+    @abstractmethod
+    def search_composed(self,
+            query: str,
+            query_embedding: List[float],
+            limit: int = 5,
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Merge keyword rank and embedding rank for one query.
+
+        The caller supplies the query vector. This method does not compute it.
+
+        :param query: The query string.
+        :type query: str
+        :param query_embedding: The caller-supplied query vector.
+        :type query_embedding: List[float]
+        :param limit: Maximum number of results to return, after fusion.
+        :type limit: int
+        :param folder_id: Optional folder identifier to filter by.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier to filter by.
+        :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
+        :return: A list of dicts with section_id and fusion score.
+        :rtype: List[Dict]
+        '''
+        raise NotImplementedError('search_composed method is required for DocumentService.')
 
     # * method: get_embedding
     @abstractmethod
