@@ -813,8 +813,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         segments table containing denormalized paragraph data.  When the
         group already exists it is kept: attributes are written onto it and
         only the ``segments`` table is replaced, so any other child of the
-        section group survives a passage rewrite. Section comments are not
-        read or written here.
+        section group survives a passage rewrite. After those paragraphs are
+        written, this section's keyword rows are replaced from
+        ``render_section``. Other sections' rows stay. Section comments are
+        not read or written here.
 
         :param section: The document section aggregate to save.
         :type section: DocumentSectionAggregate

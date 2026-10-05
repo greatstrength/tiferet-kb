@@ -3,9 +3,10 @@
 # *** imports
 
 # ** core
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 # ** app
+from tiferet.assets.error import COMMAND_PARAMETER_REQUIRED_ID
 from tiferet.events import DomainEvent
 
 from ..interfaces.document import DocumentService
@@ -36,19 +37,46 @@ class SearchEvent(DomainEvent):
         # Set the document service dependency.
         self.document_service = document_service
 
+    # * method: require_present
+    def require_present(self, name: str, value: Any) -> None:
+        '''
+        Raise when a required value was omitted or is None.
+
+        A blank string is present. It is forwarded, and it is not a missing
+        parameter. The existing command-parameter error is reused. No search
+        error code is added.
+
+        :param name: The parameter name.
+        :type name: str
+        :param value: The value passed to execute.
+        :type value: Any
+        :return: None
+        :rtype: None
+        '''
+
+        # None is absent. An empty string is a query that matches nothing.
+        if value is None:
+            self.raise_error(
+                COMMAND_PARAMETER_REQUIRED_ID,
+                message=f'Required parameters missing for {self.__class__.__name__}.',
+                parameters=[name],
+                command=self.__class__.__name__,
+            )
+
 # ** event: search_keyword_sections
 class SearchKeywordSections(SearchEvent):
     '''
     Event to rank sections by the words in their rendered bodies.
 
-    The caller supplies the query string. This event does not stem, expand,
-    or embed it. Filters narrow placement; they do not change the score.
+    The caller supplies the query string. A blank string is forwarded and
+    matches nothing. An omitted query still fails. This event does not stem,
+    expand, or embed the query. Filters narrow placement; they do not change
+    the score.
     '''
 
     # * method: execute
-    @DomainEvent.parameters_required(['query'])
     def execute(self,
-            query: str,
+            query: Optional[str] = None,
             limit: int = 5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
@@ -58,8 +86,8 @@ class SearchKeywordSections(SearchEvent):
         '''
         Search sections by keyword.
 
-        :param query: The query string. Tokenized the same way as a body.
-        :type query: str
+        :param query: The query string. A blank string is forwarded.
+        :type query: str | None
         :param limit: Maximum number of hits. Applied after filters.
         :type limit: int
         :param folder_id: Optional folder filter. Empty adds no constraint.
@@ -74,7 +102,10 @@ class SearchKeywordSections(SearchEvent):
         :rtype: List[Dict]
         '''
 
-        # Always forward the filters, including None.
+        # A blank query is a query. Only absence raises.
+        self.require_present('query', query)
+
+        # Always forward the filters, including None. Forward a blank query too.
         return self.document_service.search_keyword(
             query=query,
             limit=limit,
@@ -88,16 +119,16 @@ class SearchComposedSections(SearchEvent):
     '''
     Event to merge keyword rank with embedding rank for one query.
 
-    The caller supplies both the words and the query vector. This domain
-    does not build the vector, and the composed score is not either side's
-    score.
+    The caller supplies both the words and the query vector. A blank query
+    is forwarded, so the embedding side is not dropped. This domain does not
+    build the vector, and the composed score is not either side's score.
     '''
 
     # * method: execute
-    @DomainEvent.parameters_required(['query', 'query_embedding'])
+    @DomainEvent.parameters_required(['query_embedding'])
     def execute(self,
-            query: str,
-            query_embedding: list,
+            query: Optional[str] = None,
+            query_embedding: list = None,
             limit: int = 5,
             folder_id: Optional[str] = None,
             category_id: Optional[str] = None,
@@ -107,8 +138,8 @@ class SearchComposedSections(SearchEvent):
         '''
         Search sections by reciprocal rank fusion of keyword and embedding hits.
 
-        :param query: The query string.
-        :type query: str
+        :param query: The query string. A blank string is forwarded.
+        :type query: str | None
         :param query_embedding: The caller-supplied query vector.
         :type query_embedding: list
         :param limit: Maximum number of hits. Applied after fusion.
@@ -124,6 +155,9 @@ class SearchComposedSections(SearchEvent):
         :return: Ranked list of dicts with section_id and fusion score.
         :rtype: List[Dict]
         '''
+
+        # A blank query still fuses. Only an absent query raises.
+        self.require_present('query', query)
 
         # Always forward the filters, including None. Do not pass a model name.
         return self.document_service.search_composed(

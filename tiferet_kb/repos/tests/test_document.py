@@ -1320,6 +1320,12 @@ def test_int_search_composed_fuses_full_rankings(doc_repo):
     assert similar[0]['section_id'] in {'b-emb', 'c-both'}
     assert abs(similar[0]['score'] - 1.0) < 1e-6
 
+    # A blank query does not raise and does not drop the embedding side.
+    blank = doc_repo.search_composed('', [1.0, 0.0])
+    assert [hit['section_id'] for hit in blank] == ['b-emb', 'c-both']
+    assert abs(blank[0]['score'] - (1 / 61)) < 1e-6
+    assert 'a-kw' not in {hit['section_id'] for hit in blank}
+
 # ** test_int: search_composed_document_id_masks_before_limit
 def test_int_search_composed_document_id_masks_before_limit(doc_repo):
     '''A document filter is applied before fusion and before limit.'''
