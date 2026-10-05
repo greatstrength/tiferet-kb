@@ -47,6 +47,10 @@ from .embedding import (
     SearchSimilarSections,
     RemoveEmbedding,
 )
+from .search import (
+    SearchKeywordSections,
+    SearchComposedSections,
+)
 from .folder import (
     AddFolder,
     GetFolder,

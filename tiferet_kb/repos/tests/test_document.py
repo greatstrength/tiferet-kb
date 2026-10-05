@@ -4,6 +4,7 @@
 
 # ** core
 import inspect
+import math
 import os
 
 # ** infra
@@ -27,6 +28,8 @@ from ..document import (
     DOCUMENTS_TABLE,
     EMBEDDINGS_ARRAY,
     EMBEDDING_IDS_ARRAY,
+    KEYWORD_POSTINGS_TABLE,
+    KEYWORD_STATS_TABLE,
     SECTION_COMMENTS_TABLE,
     DocumentH5Repository,
 )
@@ -1022,3 +1025,327 @@ def test_int_comment_row_removal_does_not_call_remove_node(doc_repo, h5_file):
     with H5Client(path=h5_file, mode='r') as h5:
         assert h5.node_exists(SECTION_COMMENTS_TABLE)
         assert not any(row['id'] == 'cmt-001' for row in h5.read_rows(SECTION_COMMENTS_TABLE))
+
+# *** tests: RFP-007 keyword search
+
+# ** test_int: search_keyword_single_token_bm25
+def test_int_search_keyword_single_token_bm25(doc_repo, h5_file):
+    '''A body of python scores ln(4/3), and the query does not write content.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc', status='archived'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-py',
+        document_id='doc-001',
+        title='Not indexed',
+        content='python',
+        position=0,
+    ))
+
+    section_path = '/kb/documents/doc-001/sections/sec-py'
+    with H5Client(path=h5_file, mode='r') as h5:
+        before = h5.read_rows(f'{section_path}/segments')
+        assert 'content' not in h5.get_node_attrs(section_path)
+
+    hits = doc_repo.search_keyword('python')
+    assert [hit['section_id'] for hit in hits] == ['sec-py']
+    assert set(hits[0]) == {'section_id', 'score'}
+    assert abs(hits[0]['score'] - math.log(4 / 3)) < 1e-6
+
+    # An archived document is still a hit. Status is not a search filter.
+    assert doc_repo.get('doc-001').status == 'archived'
+
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.read_rows(f'{section_path}/segments') == before
+        assert 'content' not in h5.get_node_attrs(section_path)
+
+# ** test_int: search_keyword_tokenizes_body_not_heading
+def test_int_search_keyword_tokenizes_body_not_heading(doc_repo):
+    '''The heading is not a term. Marks, underscores, URLs, and code are.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='heading-only', document_id='doc-001', title='alpha', content='other', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='marked', document_id='doc-001', title='Marks', content='**Alpha**', position=1,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='split', document_id='doc-001', title='Split', content='foo_bar', position=2,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='linked', document_id='doc-001', title='Link',
+        content='[see](https://example.com/alpha)', position=3,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='coded', document_id='doc-001', title='Code', content='```\nalpha\n```', position=4,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='folded', document_id='doc-001', title='Fold', content='caf\u00e9', position=5,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='stem', document_id='doc-001', title='Stem', content='prefer', position=6,
+    ))
+
+    alpha_ids = {hit['section_id'] for hit in doc_repo.search_keyword('alpha')}
+    assert 'heading-only' not in alpha_ids
+    assert alpha_ids == {'marked', 'linked', 'coded'}
+    assert {hit['section_id'] for hit in doc_repo.search_keyword('foo')} == {'split'}
+    assert {hit['section_id'] for hit in doc_repo.search_keyword('bar')} == {'split'}
+    assert {hit['section_id'] for hit in doc_repo.search_keyword('caf\u00e9')} == {'folded'}
+    assert doc_repo.search_keyword('cafe') == []
+    assert doc_repo.search_keyword('prefers') == []
+    assert {hit['section_id'] for hit in doc_repo.search_keyword('prefer')} == {'stem'}
+
+# ** test_int: search_keyword_length_and_distinct_query_tokens
+def test_int_search_keyword_length_and_distinct_query_tokens(doc_repo):
+    '''A shorter equal-tf section wins, and a repeated query token adds nothing.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='long', document_id='doc-001', title='Long', content='alpha alpha beta', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='short', document_id='doc-001', title='Short', content='beta', position=1,
+    ))
+
+    beta = [hit['section_id'] for hit in doc_repo.search_keyword('beta')]
+    alpha = [hit['section_id'] for hit in doc_repo.search_keyword('alpha')]
+    repeated = [hit['section_id'] for hit in doc_repo.search_keyword('alpha alpha')]
+    assert beta == ['short', 'long']
+    assert alpha == ['long']
+    assert repeated == alpha
+
+# ** test_int: save_section_replaces_one_sections_postings
+def test_int_save_section_replaces_one_sections_postings(doc_repo, h5_file):
+    '''A second save drops the old tokens and leaves one stats row.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    kept = DocumentSectionAggregate(
+        id='kept', document_id='doc-001', title='Kept', content='gamma', position=0,
+    )
+    changed = DocumentSectionAggregate(
+        id='changed', document_id='doc-001', title='Changed', content='alpha', position=1,
+    )
+    doc_repo.save_section(kept)
+    doc_repo.save_section(changed)
+
+    changed.set_paragraphs(parse_content_to_paragraphs('beta', 'changed'))
+    doc_repo.save_section(changed)
+
+    assert doc_repo.search_keyword('alpha') == []
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('beta')] == ['changed']
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('gamma')] == ['kept']
+    with H5Client(path=h5_file, mode='r') as h5:
+        stats = h5.read_rows(KEYWORD_STATS_TABLE)
+        assert sorted(row['section_id'] for row in stats) == ['changed', 'kept']
+
+# ** test_int: empty_body_and_deletes_drop_keyword_hits
+def test_int_empty_body_and_deletes_drop_keyword_hits(doc_repo, h5_file):
+    '''No tokens, section delete, and document delete leave no stale hits.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    doc_repo.save(DocumentAggregate(id='doc-002', title='Other'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-empty', document_id='doc-001', title='Empty', content='alpha', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-del', document_id='doc-001', title='Delete', content='alpha', position=1,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-doc', document_id='doc-002', title='Doc delete', content='alpha', position=0,
+    ))
+
+    emptied = DocumentSectionAggregate(
+        id='sec-empty', document_id='doc-001', title='Empty', content='---', position=0,
+    )
+    doc_repo.save_section(emptied)
+    assert 'sec-empty' not in {hit['section_id'] for hit in doc_repo.search_keyword('alpha')}
+
+    doc_repo.delete_section('sec-del')
+    doc_repo.delete_section('sec-del')
+    assert 'sec-del' not in {hit['section_id'] for hit in doc_repo.search_keyword('alpha')}
+
+    doc_repo.delete('doc-002')
+    assert doc_repo.search_keyword('alpha') == []
+    with H5Client(path=h5_file, mode='r') as h5:
+        assert h5.node_exists(KEYWORD_POSTINGS_TABLE)
+        assert h5.read_rows(KEYWORD_POSTINGS_TABLE) == []
+
+# ** test_int: reorder_and_move_do_not_rewrite_postings
+def test_int_reorder_and_move_do_not_rewrite_postings(doc_repo):
+    '''Reorder keeps a hit. A folder or category change is visible without reindexing.'''
+
+    doc_repo.save(DocumentAggregate(
+        id='doc-001', title='Doc', folder_id='folder-a', category_id='cat-a',
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='sec-001', document_id='doc-001', title='Body', content='python', position=0,
+    ))
+    doc_repo.reorder_sections('doc-001', ['sec-001'])
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('python')] == ['sec-001']
+
+    moved = doc_repo.get('doc-001')
+    moved.set_folder('folder-f')
+    moved.set_category('cat-b')
+    doc_repo.save(moved)
+
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('python', folder_id='folder-f')] == ['sec-001']
+    assert doc_repo.search_keyword('python', folder_id='folder-a') == []
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('python', category_id='cat-b')] == ['sec-001']
+    assert doc_repo.search_keyword('python', category_id='cat-a') == []
+
+# ** test_int: search_keyword_filters_before_limit
+def test_int_search_keyword_filters_before_limit(doc_repo, h5_file, monkeypatch):
+    '''Filters are a conjunction, applied before limit, and do not create an index.'''
+
+    assert doc_repo.search_keyword('python') == []
+    assert not os.path.exists(h5_file)
+
+    doc_repo.save(DocumentAggregate(
+        id='wide', title='Wide', folder_id='folder-1', category_id='notes',
+    ))
+    doc_repo.save(DocumentAggregate(
+        id='ns-1', title='Scoped', folder_id='folder-1', category_id='notes',
+    ))
+    doc_repo.save(DocumentAggregate(
+        id='other', title='Other', folder_id='folder-2', category_id='other',
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='wide-sec', document_id='wide', title='W', content='alpha alpha alpha', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='ns-sec', document_id='ns-1', title='N', content='alpha', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='other-sec', document_id='other', title='O', content='alpha', position=0,
+    ))
+
+    file_wide = doc_repo.search_keyword('alpha', limit=1)
+    assert file_wide[0]['section_id'] == 'wide-sec'
+    scoped = doc_repo.search_keyword('alpha', limit=1, document_id='ns-1')
+    assert [hit['section_id'] for hit in scoped] == ['ns-sec']
+    assert doc_repo.search_keyword('alpha', document_id='missing') == []
+    assert doc_repo.search_keyword('alpha', folder_id='') == [
+        hit for hit in doc_repo.search_keyword('alpha')
+    ]
+    both = doc_repo.search_keyword(
+        'alpha',
+        folder_id='folder-1',
+        category_id='notes',
+        document_id='ns-1',
+    )
+    assert [hit['section_id'] for hit in both] == ['ns-sec']
+    assert doc_repo.search_keyword('alpha', folder_id='folder-1', category_id='other') == []
+    assert doc_repo.search_keyword('') == []
+    assert doc_repo.search_keyword('alpha', limit=0) == []
+    assert len(doc_repo.search_keyword('alpha')) == 3
+
+    # A document-only filter does not scan the header table.
+    header_reads = []
+    original = H5Client.read_rows
+
+    def spy_read(self, path, start=None, stop=None, condition=None):
+        if path == DOCUMENTS_TABLE:
+            header_reads.append(condition)
+        return original(self, path, start=start, stop=stop, condition=condition)
+
+    monkeypatch.setattr(H5Client, 'read_rows', spy_read)
+    assert [hit['section_id'] for hit in doc_repo.search_keyword('alpha', document_id='ns-1')] == ['ns-sec']
+    assert header_reads == []
+
+# ** test_int: keyword_idf_is_collection_wide
+def test_int_keyword_idf_is_collection_wide(doc_repo):
+    '''A folder filter drops sections. It does not change the remaining score.'''
+
+    doc_repo.save(DocumentAggregate(id='in-f', title='In', folder_id='F'))
+    doc_repo.save(DocumentAggregate(id='out-f', title='Out', folder_id='G'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='in-sec', document_id='in-f', title='In', content='python', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='out-sec', document_id='out-f', title='Out', content='python', position=0,
+    ))
+
+    wide = doc_repo.search_keyword('python')
+    narrow = doc_repo.search_keyword('python', folder_id='F')
+    wide_score = next(hit['score'] for hit in wide if hit['section_id'] == 'in-sec')
+    assert [hit['section_id'] for hit in narrow] == ['in-sec']
+    assert abs(narrow[0]['score'] - wide_score) < 1e-6
+
+# ** test_int: keyword_tie_breaks_on_section_id
+def test_int_keyword_tie_breaks_on_section_id(doc_repo):
+    '''Equal scores sort by section_id ascending, and the default limit is 5.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    for index, section_id in enumerate(['s-b', 's-a', 's-c', 's-d', 's-e', 's-f']):
+        doc_repo.save_section(DocumentSectionAggregate(
+            id=section_id, document_id='doc-001', title=section_id, content='alpha', position=index,
+        ))
+
+    default = doc_repo.search_keyword('alpha')
+    assert len(default) == 5
+    assert [hit['section_id'] for hit in default] == ['s-a', 's-b', 's-c', 's-d', 's-e']
+    assert default[0]['score'] == default[1]['score']
+
+# ** test_int: search_composed_fuses_full_rankings
+def test_int_search_composed_fuses_full_rankings(doc_repo):
+    '''Fusion keeps a one-sided hit, and a zero-norm vector does not drop keywords.'''
+
+    doc_repo.save(DocumentAggregate(id='doc-001', title='Doc'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='a-kw', document_id='doc-001', title='Words', content='alpha', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='b-emb', document_id='doc-001', title='Vector', content='other', position=1,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='c-both', document_id='doc-001', title='Both', content='alpha', position=2,
+    ))
+    doc_repo.embed_section('b-emb', [1.0, 0.0], 'test-model')
+    doc_repo.embed_section('c-both', [1.0, 0.0], 'test-model')
+
+    hits = doc_repo.search_composed('alpha', [1.0, 0.0], limit=3)
+    assert [hit['section_id'] for hit in hits] == ['c-both', 'a-kw', 'b-emb']
+    assert abs(hits[0]['score'] - (1 / 31)) < 1e-6
+    assert abs(hits[1]['score'] - (1 / 61)) < 1e-6
+    assert abs(hits[2]['score'] - (1 / 61)) < 1e-6
+    assert [hit['section_id'] for hit in doc_repo.search_composed('alpha', [1.0, 0.0], limit=1)] == ['c-both']
+
+    zero = doc_repo.search_composed('alpha', [0.0, 0.0])
+    assert [hit['section_id'] for hit in zero] == ['a-kw', 'c-both']
+    assert abs(zero[0]['score'] - (1 / 61)) < 1e-6
+    assert abs(zero[0]['score'] - math.log(4 / 3)) > 1e-3
+
+    similar = doc_repo.search_similar([1.0, 0.0], limit=1)
+    assert similar[0]['section_id'] in {'b-emb', 'c-both'}
+    assert abs(similar[0]['score'] - 1.0) < 1e-6
+
+    # A blank query does not raise and does not drop the embedding side.
+    blank = doc_repo.search_composed('', [1.0, 0.0])
+    assert [hit['section_id'] for hit in blank] == ['b-emb', 'c-both']
+    assert abs(blank[0]['score'] - (1 / 61)) < 1e-6
+    assert 'a-kw' not in {hit['section_id'] for hit in blank}
+
+# ** test_int: search_composed_document_id_masks_before_limit
+def test_int_search_composed_document_id_masks_before_limit(doc_repo):
+    '''A document filter is applied before fusion and before limit.'''
+
+    doc_repo.save(DocumentAggregate(id='strong', title='Strong'))
+    doc_repo.save(DocumentAggregate(id='weak', title='Weak'))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='s-strong', document_id='strong', title='S', content='alpha alpha alpha', position=0,
+    ))
+    doc_repo.save_section(DocumentSectionAggregate(
+        id='s-weak', document_id='weak', title='W', content='alpha', position=0,
+    ))
+    doc_repo.embed_section('s-strong', [1.0, 0.0], 'test-model')
+    doc_repo.embed_section('s-weak', [0.2, 0.9], 'test-model')
+
+    assert [hit['section_id'] for hit in doc_repo.search_composed('alpha', [1.0, 0.0], limit=1)] == ['s-strong']
+    scoped = doc_repo.search_composed('alpha', [1.0, 0.0], limit=1, document_id='weak')
+    assert [hit['section_id'] for hit in scoped] == ['s-weak']
+    assert doc_repo.search_composed('alpha', [1.0, 0.0], document_id='missing') == []
+
+    params = inspect.signature(DocumentH5Repository.search_composed).parameters
+    assert 'model_name' not in params
+    assert 'h5.h5file.remove_node' not in inspect.getsource(DocumentH5Repository._remove_index_rows)

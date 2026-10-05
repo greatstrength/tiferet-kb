@@ -3,8 +3,10 @@
 # *** imports
 
 # ** core
+import math
+from collections import Counter
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # ** infra
 import numpy as np
@@ -30,7 +32,12 @@ from ..mappers.document_link import (
     DocumentLinkAggregate,
     DocumentLinkTableObject,
 )
+from ..mappers.keyword import (
+    KeywordPostingTableObject,
+    KeywordStatsTableObject,
+)
 from ..mappers.segment import HybridSegmentTableObject
+from ..utils.markdown import render_section
 from .core import KBNodeRepository, KBTableRepository
 
 # *** constants
@@ -56,6 +63,21 @@ EMBEDDING_IDS_ARRAY = '/kb/documents/section_embedding_ids'
 # ** constant: document_links_table
 DOCUMENT_LINKS_TABLE = f'{DOCUMENTS_GROUP}/document_links'
 
+# ** constant: keyword_postings_table
+KEYWORD_POSTINGS_TABLE = f'{DOCUMENTS_GROUP}/keyword_postings'
+
+# ** constant: keyword_stats_table
+KEYWORD_STATS_TABLE = f'{DOCUMENTS_GROUP}/keyword_stats'
+
+# ** constant: bm25_k1
+BM25_K1 = 1.2
+
+# ** constant: bm25_b
+BM25_B = 0.75
+
+# ** constant: rrf_k
+RRF_K = 60
+
 # ** constant: h5_embedding_dimension_mismatch_id
 H5_EMBEDDING_DIMENSION_MISMATCH_ID = 'H5_EMBEDDING_DIMENSION_MISMATCH'
 
@@ -67,6 +89,139 @@ H5_PROPERTY_NAME_TOO_LONG_ID = 'H5_PROPERTY_NAME_TOO_LONG'
 
 # ** constant: h5_property_value_too_long_id
 H5_PROPERTY_VALUE_TOO_LONG_ID = 'H5_PROPERTY_VALUE_TOO_LONG'
+
+# *** functions
+
+# ** function: tokenize
+def tokenize(text: str) -> List[str]:
+    '''
+    Split text into casefolded alphanumeric tokens.
+
+    A token is a maximal run of characters for which ``str.isalnum`` is
+    true, then ``str.casefold``. Underscore, hyphen, and markdown
+    punctuation are separators. The same split is used on a rendered body
+    and on a query.
+
+    :param text: The string to tokenize.
+    :type text: str
+    :return: Tokens in encounter order, duplicates included.
+    :rtype: List[str]
+    '''
+
+    # A non-string has no tokens. Do not raise.
+    if not isinstance(text, str) or not text:
+        return []
+
+    # Walk the string once. Flush a run when a separator is seen.
+    tokens: List[str] = []
+    buf: List[str] = []
+    for char in text:
+        if char.isalnum():
+            buf.append(char)
+            continue
+        if buf:
+            tokens.append(''.join(buf).casefold())
+            buf = []
+
+    # Flush a token that runs to the end of the string.
+    if buf:
+        tokens.append(''.join(buf).casefold())
+    return tokens
+
+# ** function: query_tokens
+def query_tokens(text: str) -> List[str]:
+    '''
+    Return the distinct tokens of a query, in first-seen order.
+
+    ``alpha alpha`` is the query ``alpha``. Order does not affect the score.
+
+    :param text: The query string.
+    :type text: str
+    :return: Distinct tokens.
+    :rtype: List[str]
+    '''
+
+    # Keep the first occurrence. Later repeats add nothing.
+    seen = set()
+    distinct: List[str] = []
+    for token in tokenize(text):
+        if token in seen:
+            continue
+        seen.add(token)
+        distinct.append(token)
+    return distinct
+
+# ** function: fuse_rankings
+def fuse_rankings(keyword_hits: List[Dict], embedding_hits: List[Dict]) -> List[Dict]:
+    '''
+    Merge two already-ranked hit lists with reciprocal rank fusion.
+
+    Rank is the 1-based position in the list as given. A section on one
+    side keeps that side's term. The score is the fusion sum, never a
+    BM25 score and never a cosine.
+
+    :param keyword_hits: Keyword hits, best rank first.
+    :type keyword_hits: List[Dict]
+    :param embedding_hits: Embedding hits, best rank first.
+    :type embedding_hits: List[Dict]
+    :return: Fused hits, score descending, then section_id ascending.
+    :rtype: List[Dict]
+    '''
+
+    # Add each side's reciprocal rank. A missing side contributes nothing.
+    scores: Dict[str, float] = {}
+    for rank, hit in enumerate(keyword_hits, start=1):
+        section_id = hit['section_id']
+        scores[section_id] = scores.get(section_id, 0.0) + 1.0 / (RRF_K + rank)
+    for rank, hit in enumerate(embedding_hits, start=1):
+        section_id = hit['section_id']
+        scores[section_id] = scores.get(section_id, 0.0) + 1.0 / (RRF_K + rank)
+
+    # Sort the fusion scores. Equal scores do not share a rank.
+    ranked = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    return [
+        {'section_id': section_id, 'score': float(score)}
+        for section_id, score in ranked
+    ]
+
+# ** function: sort_hits
+def sort_hits(hits: List[Dict]) -> List[Dict]:
+    '''
+    Order hits by score descending, then section_id ascending.
+
+    Equal scores do not share a rank. The lower section_id is the better rank.
+
+    :param hits: Hits with section_id and score.
+    :type hits: List[Dict]
+    :return: The same hits, ranked.
+    :rtype: List[Dict]
+    '''
+
+    # Break ties in the key. Do not leave equal scores in encounter order.
+    return sorted(hits, key=lambda hit: (-hit['score'], hit['section_id']))
+
+# ** function: cut_hits
+def cut_hits(hits: List[Dict], limit: int) -> List[Dict]:
+    '''
+    Apply a result limit after ranking.
+
+    A limit less than 1 returns an empty list and does not raise. A limit
+    past the end returns every hit.
+
+    :param hits: Ranked hits.
+    :type hits: List[Dict]
+    :param limit: Maximum number of hits to keep.
+    :type limit: int
+    :return: The prefix of hits, or an empty list.
+    :rtype: List[Dict]
+    '''
+
+    # A non-positive limit is an empty result, not an error.
+    if limit < 1:
+        return []
+
+    # Slice after the ranking. Do not rank again.
+    return hits[:limit]
 
 # *** repos
 
@@ -84,8 +239,11 @@ class DocumentH5Repository(H5Repository, DocumentService):
     parallel arrays, ``section_embeddings`` and ``section_embedding_ids``.
     Section comments are rows in the sibling table ``section_comments``,
     not children of the section group, so a passage rewrite does not remove
-    them.  The ``get()`` method joins the header row and section groups to return
-    a fully-populated aggregate. It does not attach comments.
+    them.  Keyword retrieval is two more sibling tables, ``keyword_postings``
+    and ``keyword_stats``. ``save_section`` replaces one section's rows from
+    ``render_section``. Search does not create them.  The ``get()`` method
+    joins the header row and section groups to return a fully-populated
+    aggregate. It does not attach comments.
 
     This class stays on ``H5Repository`` and does not inherit
     ``TableRepository`` or ``NodeRepository``: the header is a table, the
@@ -440,10 +598,12 @@ class DocumentH5Repository(H5Repository, DocumentService):
     def delete(self, id: str) -> None:
         '''
         Delete a document and all its sections by ID (idempotent, cascading).
-        Also removes embeddings for the document's sections, every comment
-        row with that document id, and link rows where the document is the
-        source or the target. Comment rows are not under the document group.
-        A missing link table is not an error, and the table node is not removed.
+        Also removes embeddings for the document's sections, keyword postings
+        and stats for those section ids, every comment row with that document
+        id, and link rows where the document is the source or the target.
+        Comment rows are not under the document group. A missing link table
+        or a missing keyword table is not an error, and the table node is not
+        removed.
 
         :param id: The document identifier.
         :type id: str
@@ -478,9 +638,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Cascade: remove all section groups for this document.
             self.node_repo.remove_node(h5, f'{DOCUMENTS_GROUP}/{id}', recursive=True)
 
-            # Cascade: remove embeddings for all deleted sections.
+            # Cascade: remove embeddings and keyword rows for the collected section ids.
             if section_ids:
                 self._remove_embeddings_by_section_ids(h5, section_ids)
+                self._remove_index_rows(h5, section_ids)
 
             # Cascade comments by document id. Recursive group removal does not reach this table.
             self._remove_comment_rows(h5, document_id=id)
@@ -652,8 +813,10 @@ class DocumentH5Repository(H5Repository, DocumentService):
         segments table containing denormalized paragraph data.  When the
         group already exists it is kept: attributes are written onto it and
         only the ``segments`` table is replaced, so any other child of the
-        section group survives a passage rewrite. Section comments are not
-        read or written here.
+        section group survives a passage rewrite. After those paragraphs are
+        written, this section's keyword rows are replaced from
+        ``render_section``. Other sections' rows stay. Section comments are
+        not read or written here.
 
         :param section: The document section aggregate to save.
         :type section: DocumentSectionAggregate
@@ -706,13 +869,17 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
             t.flush()
 
+            # Replace this section's keyword rows from the body just written.
+            self._replace_section_index(h5, section)
+
     # * method: delete_section
     def delete_section(self, section_id: str, document_id: str = None) -> None:
         '''
         Delete a document section by ID (idempotent).
-        Also removes any embedding associated with the section, and every
-        comment row with that section id, including when the section group
-        is already gone.
+        Also removes any embedding associated with the section, that
+        section's keyword rows, and every comment row with that section id,
+        including when the section group is already gone. A missing keyword
+        table is not an error.
 
         :param section_id: The section identifier.
         :type section_id: str
@@ -735,8 +902,9 @@ class DocumentH5Repository(H5Repository, DocumentService):
                 # Search all document groups for the section.
                 self._find_and_remove_section(h5, section_id)
 
-            # Cascade: remove the section's embedding.
+            # Cascade: remove the section's embedding and keyword rows.
             self._remove_embedding_by_section_id(h5, section_id)
+            self._remove_index_rows(h5, [section_id])
 
     # * method: reorder_sections
     def reorder_sections(self, document_id: str, section_ids: List[str]) -> None:
@@ -993,58 +1161,128 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
         with self.client() as h5:
 
-            # Return empty if embedding arrays do not exist.
-            if not h5.node_exists(EMBEDDINGS_ARRAY) or not h5.node_exists(EMBEDDING_IDS_ARRAY):
-                return []
+            # Score every filtered vector. The cut stays here, not in the helper.
+            id_list, similarities = self._cosine_scores(
+                h5,
+                query_embedding,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
 
-            # Load embedding arrays.
-            embeddings = h5.get_array(EMBEDDINGS_ARRAY).read()
-            ids_raw = h5.get_array(EMBEDDING_IDS_ARRAY).read()
-
-            # Return empty if no embeddings stored.
-            if embeddings.shape[0] == 0:
-                return []
-
-            # Decode IDs.
-            id_list = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in ids_raw]
-
-            # Mask before ranking and before limit. A miss is an empty result.
-            if folder_id or category_id or document_id:
-                allowed_section_ids = self._get_filtered_section_ids(
-                    h5,
-                    folder_id=folder_id,
-                    category_id=category_id,
-                    document_id=document_id,
-                )
-                mask = np.array([sid in allowed_section_ids for sid in id_list])
-                if not mask.any():
-                    return []
-                embeddings = embeddings[mask]
-                id_list = [sid for sid, m in zip(id_list, mask) if m]
-
-            # Compute cosine similarity.
-            query_vec = np.array(query_embedding, dtype=np.float32)
-            query_norm = np.linalg.norm(query_vec)
-            if query_norm == 0:
-                return []
-            query_vec = query_vec / query_norm
-
-            emb_norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-            # Guard against zero-norm embeddings.
-            emb_norms = np.where(emb_norms == 0, 1, emb_norms)
-            normed_embs = embeddings / emb_norms
-
-            similarities = normed_embs @ query_vec
-
-            # Get top-K indices.
+            # Get top-K indices. The cosine values themselves are unchanged.
             top_k = min(limit, len(similarities))
             top_indices = np.argsort(similarities)[::-1][:top_k]
 
-        # Build result list.
+        # Build result list. Callers of this method still receive cosine scores.
         return [
             {'section_id': id_list[i], 'score': float(similarities[i])}
             for i in top_indices
         ]
+
+    # * method: search_keyword
+    def search_keyword(self,
+            query: str,
+            limit: int = 5,
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Rank sections by BM25 over the rendered body.
+
+        A missing index, a query with no tokens, and a filter that matches
+        nothing each return an empty list. None of those cases raises, and
+        none of them creates the index tables.
+
+        :param query: The query string.
+        :type query: str
+        :param limit: Maximum number of results, applied after filters.
+        :type limit: int
+        :param folder_id: Optional folder identifier. Empty adds no constraint.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier. Empty adds no constraint.
+        :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
+        :return: Hits with section_id and BM25 score.
+        :rtype: List[Dict]
+        '''
+
+        # A missing file is an empty index and must not be created.
+        if not self.file_exists():
+            return []
+
+        with self.client() as h5:
+
+            # Rank the full filtered set, then cut.
+            hits = self._keyword_hits(
+                h5,
+                query,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
+
+        # Apply the limit after the filter and the ranking.
+        return cut_hits(hits, limit)
+
+    # * method: search_composed
+    def search_composed(self,
+            query: str,
+            query_embedding: List[float],
+            limit: int = 5,
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Merge the full keyword ranking with the full embedding ranking.
+
+        The caller supplies the query vector. This method does not build one,
+        and it does not accept a model name. The returned score is reciprocal
+        rank fusion, never a BM25 score and never a cosine.
+
+        :param query: The query string.
+        :type query: str
+        :param query_embedding: The caller-supplied query vector.
+        :type query_embedding: List[float]
+        :param limit: Maximum number of results, applied after fusion.
+        :type limit: int
+        :param folder_id: Optional folder identifier. Empty adds no constraint.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier. Empty adds no constraint.
+        :type category_id: str | None
+        :param document_id: Optional document identifier. Omitted means file-wide.
+        :type document_id: str | None
+        :return: Hits with section_id and fusion score.
+        :rtype: List[Dict]
+        '''
+
+        # A missing file has neither side and must not be created.
+        if not self.file_exists():
+            return []
+
+        with self.client() as h5:
+
+            # Full filtered rankings. Do not cut either side before the fusion.
+            keyword_hits = self._keyword_hits(
+                h5,
+                query,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
+            embedding_hits = self._ranked_cosine_hits(
+                h5,
+                query_embedding,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
+
+        # Fuse, then apply the caller's limit.
+        return cut_hits(fuse_rankings(keyword_hits, embedding_hits), limit)
 
     # * method: get_embedding
     def get_embedding(self, section_id: str) -> Optional[List[float]]:
@@ -1327,6 +1565,301 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if h5.node_exists(section_path):
                 self.node_repo.remove_node(h5, section_path, recursive=True)
                 return
+
+    # * method: _replace_section_index
+    def _replace_section_index(self, h5, section: DocumentSectionAggregate) -> None:
+        '''
+        Replace one section's keyword rows from the body just written.
+
+        Old rows are removed before the new ones are written. A body with no
+        tokens leaves the section unindexed. This does not compare the
+        previous text, and it does not touch other sections.
+
+        :param h5: The open H5Client instance.
+        :param section: The section whose paragraphs were just saved.
+        :type section: DocumentSectionAggregate
+        :return: None
+        :rtype: None
+        '''
+
+        # Drop the previous body first. A later failure must not leave those terms.
+        self._remove_index_rows(h5, [section.id])
+
+        # An empty rendering has neither postings nor a stats row.
+        tokens = tokenize(render_section(section))
+        if not tokens:
+            return
+
+        # Create the sibling tables on the first indexed save. Search does not.
+        postings = self.table_repo.ensure_table(
+            h5,
+            KEYWORD_POSTINGS_TABLE,
+            KeywordPostingTableObject,
+            title='Keyword Postings',
+        )
+        stats = self.table_repo.ensure_table(
+            h5,
+            KEYWORD_STATS_TABLE,
+            KeywordStatsTableObject,
+            title='Keyword Stats',
+        )
+
+        # One posting per distinct term. Term frequency counts repeats.
+        for term, tf in Counter(tokens).items():
+            KeywordPostingTableObject(
+                term=term,
+                section_id=section.id,
+                tf=tf,
+            ).to_row(postings)
+        KeywordStatsTableObject(
+            section_id=section.id,
+            length=len(tokens),
+        ).to_row(stats)
+        postings.flush()
+        stats.flush()
+
+    # * method: _remove_index_rows
+    def _remove_index_rows(self, h5, section_ids: List[str]) -> None:
+        '''
+        Remove keyword rows for the given section ids.
+
+        A missing table is a no-op. Row removal goes through the client.
+        This does not call ``remove_node``, and it does not remove the table.
+
+        :param h5: The open H5Client instance.
+        :param section_ids: Section identifiers whose index rows should go.
+        :type section_ids: List[str]
+        :return: None
+        :rtype: None
+        '''
+
+        # Nothing to remove, and do not create the tables to find that out.
+        if not section_ids:
+            return
+
+        # Drop postings and the stats row. Either table may be absent.
+        for path in (KEYWORD_POSTINGS_TABLE, KEYWORD_STATS_TABLE):
+            if not h5.node_exists(path):
+                continue
+            for section_id in section_ids:
+                h5.remove_rows(
+                    path,
+                    KBTableRepository.string_equals('section_id', section_id),
+                )
+
+    # * method: _cosine_scores
+    def _cosine_scores(self,
+            h5,
+            query_embedding: List[float],
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> Tuple[List[str], np.ndarray]:
+        '''
+        Score every stored vector under the filter, before any limit.
+
+        A missing array, an empty array, a zero-norm query, or a filter that
+        matches nothing returns no scores. A dimension mismatch is the same
+        failure ``search_similar`` already raised. This method does not cut.
+
+        :param h5: The open H5Client instance.
+        :param query_embedding: The caller-supplied query vector.
+        :type query_embedding: List[float]
+        :param folder_id: Optional folder identifier to filter by.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier to filter by.
+        :type category_id: str | None
+        :param document_id: Optional document identifier to filter by.
+        :type document_id: str | None
+        :return: Section ids and their cosine scores, in stored order.
+        :rtype: Tuple[List[str], np.ndarray]
+        '''
+
+        empty = ([], np.array([], dtype=np.float32))
+
+        # Return empty if embedding arrays do not exist.
+        if not h5.node_exists(EMBEDDINGS_ARRAY) or not h5.node_exists(EMBEDDING_IDS_ARRAY):
+            return empty
+
+        # Load embedding arrays.
+        embeddings = h5.get_array(EMBEDDINGS_ARRAY).read()
+        ids_raw = h5.get_array(EMBEDDING_IDS_ARRAY).read()
+
+        # Return empty if no embeddings stored.
+        if embeddings.shape[0] == 0:
+            return empty
+
+        # Decode IDs.
+        id_list = [x.decode('utf-8') if isinstance(x, bytes) else str(x) for x in ids_raw]
+
+        # Mask before ranking and before limit. A miss is an empty result.
+        if folder_id or category_id or document_id:
+            allowed_section_ids = self._get_filtered_section_ids(
+                h5,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
+            mask = np.array([sid in allowed_section_ids for sid in id_list])
+            if not mask.any():
+                return empty
+            embeddings = embeddings[mask]
+            id_list = [sid for sid, keep in zip(id_list, mask) if keep]
+
+        # Compute cosine similarity. A zero-norm query matches nothing.
+        query_vec = np.array(query_embedding, dtype=np.float32)
+        query_norm = np.linalg.norm(query_vec)
+        if query_norm == 0:
+            return empty
+        query_vec = query_vec / query_norm
+
+        emb_norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
+
+        # Guard against zero-norm embeddings.
+        emb_norms = np.where(emb_norms == 0, 1, emb_norms)
+        normed_embs = embeddings / emb_norms
+        similarities = normed_embs @ query_vec
+
+        # Return every filtered score, including a negative cosine.
+        return id_list, similarities
+
+    # * method: _ranked_cosine_hits
+    def _ranked_cosine_hits(self,
+            h5,
+            query_embedding: List[float],
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Return the full filtered cosine ranking, before the caller's limit.
+
+        Rank is score descending, then section_id ascending. This is the
+        embedding side of composed retrieval. ``search_similar`` still cuts
+        with its own ordering.
+
+        :param h5: The open H5Client instance.
+        :param query_embedding: The caller-supplied query vector.
+        :type query_embedding: List[float]
+        :param folder_id: Optional folder identifier to filter by.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier to filter by.
+        :type category_id: str | None
+        :param document_id: Optional document identifier to filter by.
+        :type document_id: str | None
+        :return: Ranked hits with section_id and cosine score.
+        :rtype: List[Dict]
+        '''
+
+        # Reuse the cosine math. Do not score the vectors a second way.
+        id_list, similarities = self._cosine_scores(
+            h5,
+            query_embedding,
+            folder_id=folder_id,
+            category_id=category_id,
+            document_id=document_id,
+        )
+        hits = [
+            {'section_id': section_id, 'score': float(score)}
+            for section_id, score in zip(id_list, similarities)
+        ]
+
+        # Assign ranks on the filtered set. Equal scores do not share a rank.
+        return sort_hits(hits)
+
+    # * method: _keyword_hits
+    def _keyword_hits(self,
+            h5,
+            query: str,
+            folder_id: Optional[str] = None,
+            category_id: Optional[str] = None,
+            document_id: Optional[str] = None,
+        ) -> List[Dict]:
+        '''
+        Return every positive BM25 hit under the filter, before the limit.
+
+        Collection statistics are file-wide. The filter drops sections. It
+        does not redefine rarity. A missing index is an empty list and is
+        not created.
+
+        :param h5: The open H5Client instance.
+        :param query: The query string.
+        :type query: str
+        :param folder_id: Optional folder identifier to filter by.
+        :type folder_id: str | None
+        :param category_id: Optional category identifier to filter by.
+        :type category_id: str | None
+        :param document_id: Optional document identifier to filter by.
+        :type document_id: str | None
+        :return: Ranked hits with section_id and BM25 score.
+        :rtype: List[Dict]
+        '''
+
+        # Absence of either collection is an empty index, not an error.
+        if not h5.node_exists(KEYWORD_POSTINGS_TABLE) or not h5.node_exists(KEYWORD_STATS_TABLE):
+            return []
+
+        # A query with no tokens matches nothing. It does not raise.
+        tokens = query_tokens(query)
+        if not tokens:
+            return []
+
+        # N and average length come from every stats row, not the filter.
+        stats_rows = h5.read_rows(KEYWORD_STATS_TABLE)
+        if not stats_rows:
+            return []
+        lengths = {
+            row['section_id']: int(row['length'])
+            for row in stats_rows
+        }
+        collection_size = len(stats_rows)
+        avgdl = sum(int(row['length']) for row in stats_rows) / collection_size
+
+        # Mask before ranking. A document-only filter does not scan headers.
+        allowed = None
+        if folder_id or category_id or document_id:
+            allowed = self._get_filtered_section_ids(
+                h5,
+                folder_id=folder_id,
+                category_id=category_id,
+                document_id=document_id,
+            )
+            if not allowed:
+                return []
+
+        # Sum idf * length-norm over distinct query tokens that occur.
+        scores: Dict[str, float] = {}
+        for token in tokens:
+            rows = h5.read_rows(
+                KEYWORD_POSTINGS_TABLE,
+                condition=KBTableRepository.string_equals('term', token),
+            )
+            if not rows:
+                continue
+            document_frequency = len(rows)
+            idf = math.log(
+                1 + (collection_size - document_frequency + 0.5) / (document_frequency + 0.5)
+            )
+            for row in rows:
+                section_id = row['section_id']
+                if allowed is not None and section_id not in allowed:
+                    continue
+                length = lengths.get(section_id, 0)
+                if length < 1:
+                    continue
+                tf = int(row['tf'])
+                norm = (tf * (BM25_K1 + 1)) / (
+                    tf + BM25_K1 * (1 - BM25_B + BM25_B * length / avgdl)
+                )
+                scores[section_id] = scores.get(section_id, 0.0) + idf * norm
+
+        # A section with no query token is absent, not a zero-score row.
+        hits = [
+            {'section_id': section_id, 'score': float(score)}
+            for section_id, score in scores.items()
+            if score > 0
+        ]
+        return sort_hits(hits)
 
     # * method: _section_ids_for_document
     def _section_ids_for_document(self, h5, document_id: str) -> set:
