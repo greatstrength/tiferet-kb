@@ -170,6 +170,24 @@ class DocumentService(Service):
         '''
         raise NotImplementedError('get_sections method is required for DocumentService.')
 
+    # * method: get_section
+    @abstractmethod
+    def get_section(self, document_id: str, section_id: str):
+        '''
+        Load one section without creating or rewriting the file.
+
+        A missing file or a missing section group is None. This does not
+        walk every document group.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: The section, or None.
+        :rtype: DocumentSectionAggregate | None
+        '''
+        raise NotImplementedError('get_section method is required for DocumentService.')
+
     # * method: save_section
     @abstractmethod
     def save_section(self, section) -> None:
@@ -209,6 +227,76 @@ class DocumentService(Service):
         :rtype: None
         '''
         raise NotImplementedError('reorder_sections method is required for DocumentService.')
+
+    # * method: append_section_revision
+    @abstractmethod
+    def append_section_revision(self,
+            document_id: str,
+            section_id: str,
+            title: str,
+            content_type: str,
+            paragraphs: List,
+        ):
+        '''
+        Append a snapshot of a section's passages, heading, and content type.
+
+        The repository assigns the next revision number and the snapshot
+        timestamp when the revision is appended. The caller does not choose
+        either. An empty paragraph list is a real snapshot.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :param title: The heading to snapshot.
+        :type title: str
+        :param content_type: The content type to snapshot.
+        :type content_type: str
+        :param paragraphs: The paragraph model to copy. Not shared with the live list.
+        :type paragraphs: List
+        :return: The appended revision, including its assigned number.
+        :rtype: SectionRevision
+        '''
+        raise NotImplementedError('append_section_revision method is required for DocumentService.')
+
+    # * method: list_section_revisions
+    @abstractmethod
+    def list_section_revisions(self, document_id: str, section_id: str) -> List:
+        '''
+        List a section's revisions, highest number first.
+
+        A missing revisions collection is an empty list. This method does
+        not create the file or the collection, and it does not walk every
+        document group.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: Revisions for that section, newest number first.
+        :rtype: List
+        '''
+        raise NotImplementedError('list_section_revisions method is required for DocumentService.')
+
+    # * method: get_section_revision
+    @abstractmethod
+    def get_section_revision(self, document_id: str, section_id: str, number: int):
+        '''
+        Load one numbered revision, or None when that number is absent.
+
+        A missing file or collection is None. This method does not create
+        the file and does not walk every document group.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :param number: The revision number.
+        :type number: int
+        :return: The revision, or None.
+        :rtype: SectionRevision | None
+        '''
+        raise NotImplementedError('get_section_revision method is required for DocumentService.')
 
     # * method: embed_section
     @abstractmethod

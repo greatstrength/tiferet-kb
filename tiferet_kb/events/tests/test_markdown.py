@@ -70,6 +70,7 @@ def test_import_markdown_success(mock_document_service: DocumentService, sample_
     # Assert the document and sections were persisted.
     mock_document_service.save.assert_called_once()
     assert mock_document_service.save_section.call_count == 2
+    mock_document_service.append_section_revision.assert_not_called()
 
 
 # ** test: import_markdown_single_section

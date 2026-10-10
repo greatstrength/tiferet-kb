@@ -26,6 +26,26 @@ PROPERTY_VALUE_TYPES = (
     'boolean',
 )
 
+# *** functions
+
+# ** function: link_url_key
+def link_url_key(link_url: Optional[str]) -> str:
+    '''
+    Normalize a link URL so absent and empty compare as equal.
+
+    :param link_url: The link URL, or None when the segment has none.
+    :type link_url: str | None
+    :return: The empty string when the URL is absent or empty.
+    :rtype: str
+    '''
+
+    # Treat a missing URL as the empty sentinel stored on the segments table.
+    if not link_url:
+        return ''
+
+    # Return a present URL unchanged.
+    return link_url
+
 # *** models
 
 # ** model: document_section
@@ -158,6 +178,121 @@ class DocumentSection(DomainObject):
             data['created_at'] = now
         if not data.get('updated_at'):
             data['updated_at'] = now
+
+        # Return the augmented data.
+        return data
+
+    # * method: matches_paragraphs
+    def matches_paragraphs(self, paragraphs: List[Paragraph]) -> bool:
+        '''
+        Report whether parsed paragraphs match the stored passages.
+
+        Identifiers are ignored, because a content parse mints new ones.
+        Absent and empty link URLs are equal. Order, position, block type,
+        segment text, and format are compared.
+
+        :param paragraphs: The paragraphs to compare against the stored list.
+        :type paragraphs: List[Paragraph]
+        :return: True when the passages match, otherwise False.
+        :rtype: bool
+        '''
+
+        # A different count is a different passage list.
+        if len(self.paragraphs) != len(paragraphs):
+            return False
+
+        # Compare each paragraph in stored order.
+        for stored, parsed in zip(self.paragraphs, paragraphs):
+            if stored.position != parsed.position or stored.block_type != parsed.block_type:
+                return False
+            if len(stored.segments) != len(parsed.segments):
+                return False
+
+            # Compare each segment in stored order, ignoring identifiers.
+            for left, right in zip(stored.segments, parsed.segments):
+                if left.position != right.position:
+                    return False
+                if left.text != right.text or left.format_type != right.format_type:
+                    return False
+                if link_url_key(left.link_url) != link_url_key(right.link_url):
+                    return False
+
+        # The passages match.
+        return True
+
+# ** model: section_revision
+class SectionRevision(DomainObject):
+    '''
+    A numbered snapshot of a section's previous passages, heading, and content type.
+
+    Kept so a content rewrite can hand those passages back without a diff,
+    a markdown string, or a version of the document header.
+    '''
+
+    # * attribute: document_id
+    document_id: str = Field(
+        ...,
+        description='UUID of the parent document.',
+    )
+
+    # * attribute: section_id
+    section_id: str = Field(
+        ...,
+        description='UUID of the parent section.',
+    )
+
+    # * attribute: number
+    number: int = Field(
+        ...,
+        gt=0,
+        description='Positive revision number within the section. Never reused.',
+    )
+
+    # * attribute: created_at
+    created_at: str = Field(
+        ...,
+        description='UTC ISO 8601 time of the snapshot write.',
+    )
+
+    # * attribute: title
+    title: str = Field(
+        ...,
+        description='Section heading copied at the time of the snapshot.',
+    )
+
+    # * attribute: content_type
+    content_type: str = Field(
+        ...,
+        description='Content type copied at the time of the snapshot.',
+    )
+
+    # * attribute: paragraphs
+    paragraphs: List[Paragraph] = Field(
+        default_factory=list,
+        description='Paragraph model copied from the section, identifiers included.',
+    )
+
+    # * method: _derive_created_at (validator)
+    @model_validator(mode='before')
+    @classmethod
+    def _derive_created_at(cls, data: Any) -> Any:
+        '''
+        Derive created_at when the caller does not supply a timestamp.
+
+        :param data: The raw input data.
+        :type data: Any
+        :return: The augmented input data.
+        :rtype: Any
+        '''
+
+        # Only mutate dict-shaped inputs.
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+
+        # Stamp the snapshot time the same way a section timestamp is stamped.
+        if not data.get('created_at'):
+            data['created_at'] = datetime.now(timezone.utc).isoformat()
 
         # Return the augmented data.
         return data

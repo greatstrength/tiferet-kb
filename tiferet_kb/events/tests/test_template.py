@@ -229,6 +229,7 @@ def test_apply_template_success(mock_template_service, mock_document_service, sa
     # Document header saved once + 2 sections saved.
     mock_document_service.save.assert_called_once()
     assert mock_document_service.save_section.call_count == 2
+    mock_document_service.append_section_revision.assert_not_called()
 
 
 # ** test: apply_template_not_found

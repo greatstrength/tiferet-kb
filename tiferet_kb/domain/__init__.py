@@ -5,7 +5,7 @@
 # ** app
 from .category import Category
 from .comment import SectionComment
-from .document import Document, DocumentProperty, DocumentSection
+from .document import Document, DocumentProperty, DocumentSection, SectionRevision
 from .document_link import DocumentLink
 from .tag import Tag
 from .embedding import EmbeddingRecord

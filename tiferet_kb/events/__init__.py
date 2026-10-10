@@ -24,6 +24,8 @@ from .document import (
     RemoveDocument,
     AddDocumentSection,
     UpdateDocumentSection,
+    ListDocumentSectionRevisions,
+    RestoreDocumentSectionRevision,
     RemoveDocumentSection,
     ReorderDocumentSections,
     SetDocumentProperty,

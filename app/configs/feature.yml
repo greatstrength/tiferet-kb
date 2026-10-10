@@ -97,6 +97,18 @@ features:
       commands:
         - attribute_id: update_document_section_event
           name: Update section
+    list_revisions:
+      name: List Section Revisions
+      description: List a section's revisions newest first
+      commands:
+        - attribute_id: list_document_section_revisions_event
+          name: List section revisions
+    restore:
+      name: Restore Section Revision
+      description: Restore a section's paragraphs from a revision
+      commands:
+        - attribute_id: restore_document_section_revision_event
+          name: Restore section revision
     remove:
       name: Remove Section
       description: Remove a section from a document
