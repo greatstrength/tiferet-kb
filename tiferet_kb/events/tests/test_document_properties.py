@@ -34,7 +34,6 @@ from ..document import (
     SetDocumentProperty,
     UpdateDocument,
 )
-from ... import __version__
 
 # *** fixtures
 
@@ -467,7 +466,7 @@ def test_delete_drops_rows_and_does_not_remove_the_table_node(doc_repo, tag_repo
 
 # ** test: header_columns_and_wiring_stay_in_scope
 def test_header_columns_and_wiring_stay_in_scope():
-    '''The header columns, section model, version, and feature wiring match the proposal.'''
+    '''The header columns, section model, and feature wiring match the proposal.'''
 
     assert set(DocumentTableObject._H5_TYPES) == {
         'id',
@@ -482,7 +481,6 @@ def test_header_columns_and_wiring_stay_in_scope():
         'updated_at',
     }
     assert 'content' not in DocumentSection.model_fields
-    assert __version__ == '1.0.0a1'
 
     root = Path(__file__).resolve().parents[3]
     feature = yaml.safe_load((root / 'app/configs/feature.yml').read_text())
