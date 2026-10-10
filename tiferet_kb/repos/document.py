@@ -651,6 +651,48 @@ class DocumentH5Repository(H5Repository, DocumentService):
         with self.client() as h5:
             return self._read_sections(h5, document_id)
 
+    # * method: get_section
+    def get_section(self, document_id: str, section_id: str) -> Optional[DocumentSectionAggregate]:
+        '''
+        Load one section without creating or rewriting the file.
+
+        A missing file or a missing section group is None. The file is
+        opened read-only and is not created.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: The section, or None.
+        :rtype: DocumentSectionAggregate | None
+        '''
+
+        # A missing file is not a section. Do not create it.
+        if not self.file_exists():
+            return None
+
+        with self.client(mode='r') as h5:
+
+            # One path. Do not walk every document group.
+            section_group = self._section_group(document_id, section_id)
+            if not h5.node_exists(section_group):
+                return None
+
+            # Read that section's attributes and live passages.
+            section_obj = DocumentSectionNodeObject.from_attrs(
+                h5.get_node_attrs(section_group),
+                id=section_id,
+                document_id=document_id,
+            )
+            paragraphs = self._read_paragraphs(
+                h5,
+                f'{section_group}/segments',
+                section_id,
+            )
+
+        # Return the live section. Revisions are not included.
+        return section_obj.map(paragraphs=paragraphs)
+
     # * method: save_section
     def save_section(self, section: DocumentSectionAggregate) -> None:
         '''

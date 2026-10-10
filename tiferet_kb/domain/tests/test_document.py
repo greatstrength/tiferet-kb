@@ -266,7 +266,7 @@ def test_section_revision_has_no_content_string():
     assert 'content' not in SectionRevision.model_fields
     assert 'author' not in SectionRevision.model_fields
     assert revision.paragraphs == []
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         SectionRevision(
             document_id='doc-1',
             section_id='sec-1',

@@ -170,6 +170,24 @@ class DocumentService(Service):
         '''
         raise NotImplementedError('get_sections method is required for DocumentService.')
 
+    # * method: get_section
+    @abstractmethod
+    def get_section(self, document_id: str, section_id: str):
+        '''
+        Load one section without creating or rewriting the file.
+
+        A missing file or a missing section group is None. This does not
+        walk every document group.
+
+        :param document_id: The parent document identifier.
+        :type document_id: str
+        :param section_id: The section identifier.
+        :type section_id: str
+        :return: The section, or None.
+        :rtype: DocumentSectionAggregate | None
+        '''
+        raise NotImplementedError('get_section method is required for DocumentService.')
+
     # * method: save_section
     @abstractmethod
     def save_section(self, section) -> None:
@@ -237,6 +255,7 @@ class DocumentService(Service):
         :param paragraphs: The paragraph model to copy. Not shared with the live list.
         :type paragraphs: List
         :return: The appended revision, including its assigned number.
+        :rtype: SectionRevision
         '''
         raise NotImplementedError('append_section_revision method is required for DocumentService.')
 
@@ -275,6 +294,7 @@ class DocumentService(Service):
         :param number: The revision number.
         :type number: int
         :return: The revision, or None.
+        :rtype: SectionRevision | None
         '''
         raise NotImplementedError('get_section_revision method is required for DocumentService.')
 

@@ -765,14 +765,14 @@ def test_list_revisions_requires_document_id(mock_document_service):
         )
 
     assert exc_info.value.error_code == KB_DOCUMENT_SECTION_NOT_FOUND_ID
-    mock_document_service.get_sections.assert_not_called()
+    mock_document_service.get_section.assert_not_called()
     mock_document_service.list_section_revisions.assert_not_called()
 
 # ** test: list_revisions_missing_section
 def test_list_revisions_missing_section(mock_document_service):
     '''A missing section raises and does not list revisions.'''
 
-    mock_document_service.get_sections.return_value = []
+    mock_document_service.get_section.return_value = None
 
     with pytest.raises(TiferetError) as exc_info:
         DomainEvent.handle(
@@ -789,7 +789,7 @@ def test_list_revisions_missing_section(mock_document_service):
 def test_restore_missing_revision_does_not_write(mock_document_service, sample_section):
     '''A missing revision raises and does not append or save.'''
 
-    mock_document_service.get_sections.return_value = [sample_section]
+    mock_document_service.get_section.return_value = sample_section
     mock_document_service.get_section_revision.return_value = None
 
     with pytest.raises(TiferetError) as exc_info:
@@ -809,7 +809,7 @@ def test_restore_missing_revision_does_not_write(mock_document_service, sample_s
 def test_restore_non_positive_number(mock_document_service, sample_section):
     '''A number less than 1 is a missing revision and writes nothing.'''
 
-    mock_document_service.get_sections.return_value = [sample_section]
+    mock_document_service.get_section.return_value = sample_section
 
     with pytest.raises(TiferetError) as exc_info:
         DomainEvent.handle(
@@ -855,7 +855,7 @@ def test_restore_puts_snapshot_paragraphs_back(mock_document_service, sample_sec
             ),
         ],
     )
-    mock_document_service.get_sections.return_value = [sample_section]
+    mock_document_service.get_section.return_value = sample_section
     mock_document_service.get_section_revision.return_value = revision
 
     result = DomainEvent.handle(

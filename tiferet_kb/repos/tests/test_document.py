@@ -36,7 +36,6 @@ from ..document import (
     EMBEDDINGS_ARRAY,
     EMBEDDING_IDS_ARRAY,
     SECTION_COMMENTS_TABLE,
-
     REVISIONS_GROUP_NAME,
     DocumentH5Repository,
 )
@@ -1041,6 +1040,34 @@ def test_int_list_revisions_missing_file(doc_repo, h5_file):
 
     assert doc_repo.list_section_revisions('doc-001', 'sec-001') == []
     assert doc_repo.get_section_revision('doc-001', 'sec-001', 1) is None
+    assert doc_repo.get_section('doc-001', 'sec-001') is None
+    assert not os.path.exists(h5_file)
+
+# ** test_int: missing_section_history_does_not_create_file
+def test_int_missing_section_history_does_not_create_file(doc_repo, h5_file):
+    '''A missing-section list or restore raises and does not create the file.'''
+
+    with pytest.raises(TiferetError) as listed:
+        DomainEvent.handle(
+            ListDocumentSectionRevisions,
+            dependencies={'document_service': doc_repo},
+            id='sec-missing',
+            document_id='doc-missing',
+        )
+
+    assert listed.value.error_code == 'KB_DOCUMENT_SECTION_NOT_FOUND'
+    assert not os.path.exists(h5_file)
+
+    with pytest.raises(TiferetError) as restored:
+        DomainEvent.handle(
+            RestoreDocumentSectionRevision,
+            dependencies={'document_service': doc_repo},
+            id='sec-missing',
+            document_id='doc-missing',
+            number=1,
+        )
+
+    assert restored.value.error_code == 'KB_DOCUMENT_SECTION_NOT_FOUND'
     assert not os.path.exists(h5_file)
 
 # ** test_int: missing_collection_lists_empty
