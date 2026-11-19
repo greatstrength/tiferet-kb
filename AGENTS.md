@@ -125,17 +125,6 @@ RST format with `:param`, `:type`, `:return:`, `:rtype:` for all public methods.
 
 All errors are raised as `TiferetError` via `self.verify()` or `self.raise_error()` in domain events.  Error code constants are defined in `tiferet_kb/assets/constants.py`.  Default error definitions (name + message templates) are in `tiferet_kb/assets/errors.py` as a `DEFAULT_ERRORS` dict, following the same pattern as `tiferet.assets.constants.DEFAULT_ERRORS`.
 
-**Configuring KB errors at app level:** tiferet's `GetError` event and `ErrorContext` only search tiferet's own `DEFAULT_ERRORS` dict.  To make KB error definitions available as built-in defaults (without requiring `error.yml`), the consuming app must merge them at initialization:
-
-```python
-from tiferet.assets.constants import DEFAULT_ERRORS as TIFERET_DEFAULTS
-from tiferet_kb.assets import DEFAULT_ERRORS as KB_DEFAULTS
-
-TIFERET_DEFAULTS.update({k: v for k, v in KB_DEFAULTS.items() if k not in TIFERET_DEFAULTS})
-```
-
-Alternatively, include all KB error definitions in `app/configs/error.yml` so the error repository returns them directly.
-
 ## Package Exports
 
 `tiferet_kb/__init__.py` exports:

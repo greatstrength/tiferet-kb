@@ -15,7 +15,7 @@ Demonstrates the core knowledge base workflow:
 python examples/kb_demo.py
 ```
 
-The demo uses mock services so no HDF5 file is required.
+The script calls `KB` with a file path.
 
 ## Markdown Convention
 

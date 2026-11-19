@@ -129,16 +129,7 @@ Repository tests are **integration tests** that operate against real temporary H
 
 ## DI Registration
 
-Register the repository in the container configuration:
-
-```yaml
-services:
-  category_service:
-    module_path: tiferet_kb.repos.category
-    class_name: CategoryH5Repository
-    params:
-      h5_file: data/kb.h5
-```
+The session client writes `h5_file` as a container constant. A consumer calls `KB(path)`. A consumer does not copy `app/configs/` or put `h5_file` on a service row.
 
 ---
 

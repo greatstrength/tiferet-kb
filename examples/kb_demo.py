@@ -1,8 +1,7 @@
 """
 tiferet_kb Example — Knowledge Base Demo
 
-Demonstrates the core KB workflow using DomainEvent.handle() with mock
-services.  This script exercises:
+Demonstrates the core KB workflow through KB(path):
 
   1. Create a category
   2. Import a markdown document (H1-delimited sections)
@@ -11,55 +10,41 @@ services.  This script exercises:
 
 Run:
     python examples/kb_demo.py
+    python examples/kb_demo.py /path/to/kb.h5
 """
 
 # *** imports
 
 # ** core
-from unittest import mock
+import sys
+import tempfile
+from pathlib import Path
 
 # ** app
-from tiferet.events import DomainEvent
+from tiferet_kb import KB
 
-from tiferet_kb.interfaces import CategoryService, DocumentService, TagService
-from tiferet_kb.events import (
-    AddCategory,
-    ListCategories,
-    ImportMarkdownDocument,
-    ExportDocumentMarkdown,
-    ListDocuments,
-)
+# *** functions
 
-# *** setup
+# ** function: resolve_path
+def resolve_path() -> str:
+    '''
+    Return the caller path, or create one temporary path.
 
-# Mock services — replace with real H5-backed repos for production use.
-mock_category_service = mock.Mock(spec=CategoryService)
-mock_category_service.exists.return_value = False
-mock_category_service.list.return_value = []
+    :return: A filesystem path for the knowledge-base file.
+    :rtype: str
+    '''
 
-mock_document_service = mock.Mock(spec=DocumentService)
-mock_document_service.exists.return_value = False
-mock_document_service.list.return_value = []
+    # Accept a path from the command line when one is given.
+    if len(sys.argv) > 1:
+        return sys.argv[1]
 
-mock_tag_service = mock.Mock(spec=TagService)
+    # Otherwise create a temporary directory and name the file there.
+    directory = tempfile.mkdtemp(prefix='tiferet-kb-demo-')
+    return str(Path(directory) / 'kb.h5')
 
 # *** demo
 
-print('=== tiferet_kb Demo ===\n')
-
-# --- Step 1: Create a category ---
-print('1. Creating category "guides"...')
-category = DomainEvent.handle(
-    AddCategory,
-    dependencies={'category_service': mock_category_service},
-    id='guides',
-    name='Guides',
-    description='How-to guides and tutorials',
-    icon='📖',
-)
-print(f'   Created: {category.id} — {category.name}\n')
-
-# --- Step 2: Import a markdown document ---
+# The existing H1 sample. The script does not choose a path inside KB.
 SAMPLE_MARKDOWN = """\
 # Getting Started
 
@@ -97,12 +82,33 @@ This convention keeps parsing simple and unambiguous — ideal for
 agent-generated content.
 """
 
+print('=== tiferet_kb Demo ===\n')
+
+path = resolve_path()
+session = KB(path)
+print(f'File: {path}\n')
+
+# --- Step 1: Create a category ---
+print('1. Creating category "guides"...')
+category = session.run(
+    'category.add',
+    data={
+        'id': 'guides',
+        'name': 'Guides',
+        'description': 'How-to guides and tutorials',
+        'icon': '📖',
+    },
+)
+print(f'   Created: {category.id} — {category.name}\n')
+
+# --- Step 2: Import a markdown document ---
 print('2. Importing markdown document...')
-document = DomainEvent.handle(
-    ImportMarkdownDocument,
-    dependencies={'document_service': mock_document_service},
-    content=SAMPLE_MARKDOWN,
-    category_id='guides',
+document = session.run(
+    'markdown.import',
+    data={
+        'content': SAMPLE_MARKDOWN,
+        'category_id': 'guides',
+    },
 )
 print(f'   Document: "{document.title}" (id={document.id})')
 print(f'   Sections: {len(document.sections)}')
@@ -112,30 +118,17 @@ for sec in document.sections:
 print()
 
 # --- Step 3: List documents ---
-# Wire mock to return the created document for listing.
-mock_document_service.list.return_value = [document]
-
 print('3. Listing documents...')
-docs = DomainEvent.handle(
-    ListDocuments,
-    dependencies={
-        'document_service': mock_document_service,
-        'tag_service': mock_tag_service,
-    },
-)
+docs = session.run('document.list', data={})
 for doc in docs:
     print(f'   - {doc.title} (status={doc.status}, sections={len(doc.sections)})')
 print()
 
 # --- Step 4: Export back to markdown ---
-# Wire mock to return the full document for export.
-mock_document_service.get.return_value = document
-
 print('4. Exporting document to markdown...')
-exported_md = DomainEvent.handle(
-    ExportDocumentMarkdown,
-    dependencies={'document_service': mock_document_service},
-    id=document.id,
+exported_md = session.run(
+    'markdown.export',
+    data={'id': document.id},
 )
 
 print('--- Exported Markdown ---')
