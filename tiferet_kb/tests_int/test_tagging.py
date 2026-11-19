@@ -8,7 +8,7 @@ from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
 # ** app
-from ..assets import errors as err
+from ..assets import error as err
 from ..events import (
     AddDocument,
     AddDocumentSection,

@@ -99,7 +99,7 @@ class AddDocumentLink(DocumentLinkEvent):
                 link_type,
                 DocumentLinkTableObject.type_width(),
             ),
-            error_code=a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+            error_code=a.error.KB_INVALID_DOCUMENT_LINK_ID,
             message='Invalid document link type.',
             link_type=link_type,
         )
@@ -113,7 +113,7 @@ class AddDocumentLink(DocumentLinkEvent):
                     supplied_id,
                     DocumentLinkTableObject.identifier_width(),
                 ),
-                error_code=a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                error_code=a.error.KB_INVALID_DOCUMENT_LINK_ID,
                 message='Invalid document link id.',
                 id=supplied_id,
             )
@@ -121,13 +121,13 @@ class AddDocumentLink(DocumentLinkEvent):
         # Both documents must exist. Check the source first, then the target.
         self.verify(
             expression=self.document_service.exists(source_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             message=f'Document not found: {source_id}',
             document_id=source_id,
         )
         self.verify(
             expression=self.document_service.exists(target_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             message=f'Document not found: {target_id}',
             document_id=target_id,
         )
@@ -135,7 +135,7 @@ class AddDocumentLink(DocumentLinkEvent):
         # A self-link is rejected only after both endpoints exist.
         self.verify(
             expression=source_id != target_id,
-            error_code=a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+            error_code=a.error.KB_INVALID_DOCUMENT_LINK_ID,
             message='A document link cannot point at its source.',
             source_id=source_id,
             target_id=target_id,
@@ -230,7 +230,7 @@ class ListDocumentLinks(DocumentLinkEvent):
         }
         self.verify(
             expression=direction in allowed,
-            error_code=a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+            error_code=a.error.KB_INVALID_DOCUMENT_LINK_ID,
             message=f'Invalid document link direction: {direction}',
             direction=direction,
         )
@@ -243,7 +243,7 @@ class ListDocumentLinks(DocumentLinkEvent):
                 link_type = link_type.strip()
             self.verify(
                 expression=bool(link_type),
-                error_code=a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                error_code=a.error.KB_INVALID_DOCUMENT_LINK_ID,
                 message='Invalid document link type.',
                 link_type=link_type,
             )
@@ -251,7 +251,7 @@ class ListDocumentLinks(DocumentLinkEvent):
         # The document must exist. A missing link table is not this failure.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             message=f'Document not found: {document_id}',
             document_id=document_id,
         )

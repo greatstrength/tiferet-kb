@@ -127,8 +127,8 @@ class FolderH5Repository(KBNodeRepository, FolderService):
         # Reject an unrecognized visibility before reading.
         if visibility is not None and visibility not in a.core.VISIBILITIES:
             TiferetError.raise_error(
-                a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 

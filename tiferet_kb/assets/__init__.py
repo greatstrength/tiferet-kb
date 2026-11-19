@@ -4,5 +4,6 @@
 
 # ** app
 from . import core
-from . import errors
-from .errors import DEFAULT_ERRORS
+from . import error
+from . import app
+from . import feature

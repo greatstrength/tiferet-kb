@@ -400,8 +400,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
         # look like a status filter that happened to match nothing.
         if visibility is not None and visibility not in a.core.VISIBILITIES:
             TiferetError.raise_error(
-                a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 
@@ -672,7 +672,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             # Refuse a duplicate before creating the table or appending a row.
             if self._link_conflicts(h5, link):
                 TiferetError.raise_error(
-                    a.errors.KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
+                    a.error.KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
                     message=f'Document link already exists: {link.id}',
                     id=link.id,
                     source_id=link.source_id,
@@ -726,7 +726,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
         }
         if direction not in allowed:
             TiferetError.raise_error(
-                a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                a.error.KB_INVALID_DOCUMENT_LINK_ID,
                 message=f'Invalid document link direction: {direction}',
                 direction=direction,
             )
@@ -736,7 +736,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             link_type = link_type.strip() if isinstance(link_type, str) else ''
             if not link_type:
                 TiferetError.raise_error(
-                    a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+                    a.error.KB_INVALID_DOCUMENT_LINK_ID,
                     message='Invalid document link type.',
                     link_type=link_type,
                 )
@@ -1130,7 +1130,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if not h5.node_exists(section_group):
                 ServiceError.raise_for(
                     self,
-                    a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+                    a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
                     message='Document section not found.',
                     section_id=section_id,
                 )
@@ -2634,7 +2634,7 @@ class DocumentH5Repository(H5Repository, DocumentService):
 
         # Refuse before any table is created.
         TiferetError.raise_error(
-            a.errors.KB_INVALID_DOCUMENT_LINK_ID,
+            a.error.KB_INVALID_DOCUMENT_LINK_ID,
             message='Invalid document link.',
             id=link.id,
             link_type=link.link_type,

@@ -72,7 +72,7 @@ class AddTag(DomainEvent):
         # Verify no duplicate tag id exists.
         self.verify(
             expression=not self.tag_service.exists(tag.id),
-            error_code=a.errors.KB_TAG_ALREADY_EXISTS_ID,
+            error_code=a.error.KB_TAG_ALREADY_EXISTS_ID,
             message=f'Tag with ID {tag.id} already exists.',
             id=tag.id,
         )
@@ -124,7 +124,7 @@ class GetTag(DomainEvent):
         # Verify that the tag exists.
         self.verify(
             expression=tag is not None,
-            error_code=a.errors.KB_TAG_NOT_FOUND_ID,
+            error_code=a.error.KB_TAG_NOT_FOUND_ID,
             tag_id=id,
         )
 
@@ -216,7 +216,7 @@ class UpdateTag(DomainEvent):
         valid_attributes = {'name', 'color'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=a.errors.KB_INVALID_TAG_ATTRIBUTE_ID,
+            error_code=a.error.KB_INVALID_TAG_ATTRIBUTE_ID,
             message=f'Invalid tag attribute: {attribute}',
             attribute=attribute,
         )
@@ -225,7 +225,7 @@ class UpdateTag(DomainEvent):
         if attribute == 'name':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=a.errors.KB_INVALID_TAG_ATTRIBUTE_ID,
+                error_code=a.error.KB_INVALID_TAG_ATTRIBUTE_ID,
                 message='A tag name is required when updating the name attribute.',
                 attribute=attribute,
             )
@@ -236,7 +236,7 @@ class UpdateTag(DomainEvent):
         # Verify that the tag exists.
         self.verify(
             expression=tag is not None,
-            error_code=a.errors.KB_TAG_NOT_FOUND_ID,
+            error_code=a.error.KB_TAG_NOT_FOUND_ID,
             tag_id=id,
         )
 
@@ -293,7 +293,7 @@ class RemoveTag(DomainEvent):
         carriers = self.tag_service.list_document_ids(id)
         self.verify(
             expression=len(carriers) == 0,
-            error_code=a.errors.KB_TAG_IN_USE_ID,
+            error_code=a.error.KB_TAG_IN_USE_ID,
             message=f'Tag {id} is carried by existing documents.',
             id=id,
         )
@@ -356,14 +356,14 @@ class TagDocument(DomainEvent):
         # Check the document first. exists does not load section passages.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
         # Then require the tag label.
         self.verify(
             expression=self.tag_service.get(tag_id) is not None,
-            error_code=a.errors.KB_TAG_NOT_FOUND_ID,
+            error_code=a.error.KB_TAG_NOT_FOUND_ID,
             tag_id=tag_id,
         )
 
@@ -468,7 +468,7 @@ class ListDocumentTags(DomainEvent):
         # A missing document is an error, not an empty list.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 

@@ -12,7 +12,7 @@ from tiferet.assets import TiferetError
 
 from ...interfaces.document import DocumentService
 from ...interfaces.tag import TagService
-from ...assets.errors import (
+from ...assets.error import (
     KB_DOCUMENT_SECTION_NOT_FOUND_ID,
     KB_SECTION_REVISION_NOT_FOUND_ID,
 )

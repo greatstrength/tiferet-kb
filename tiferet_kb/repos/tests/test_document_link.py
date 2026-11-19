@@ -12,7 +12,7 @@ from tiferet.events import DomainEvent
 from tiferet_h5.utils import H5Client
 
 # ** app
-from ...assets.errors import (
+from ...assets.error import (
     KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_LINK_ID,

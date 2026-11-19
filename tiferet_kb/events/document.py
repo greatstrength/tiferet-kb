@@ -185,7 +185,7 @@ class AddDocument(DomainEvent):
         # Verify no duplicate document exists.
         self.verify(
             expression=not self.document_service.exists(document.id),
-            error_code=a.errors.KB_DOCUMENT_ALREADY_EXISTS_ID,
+            error_code=a.error.KB_DOCUMENT_ALREADY_EXISTS_ID,
             message=f'Document with ID {document.id} already exists.',
             id=document.id,
         )
@@ -195,7 +195,7 @@ class AddDocument(DomainEvent):
             valid_statuses = {'draft', 'published', 'archived'}
             self.verify(
                 expression=status in valid_statuses,
-                error_code=a.errors.KB_INVALID_DOCUMENT_STATUS_ID,
+                error_code=a.error.KB_INVALID_DOCUMENT_STATUS_ID,
                 message=f'Invalid document status: {status}',
                 status=status,
             )
@@ -204,8 +204,8 @@ class AddDocument(DomainEvent):
         if visibility is not None:
             self.verify(
                 expression=visibility in a.core.VISIBILITIES,
-                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                error_code=a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 
@@ -256,7 +256,7 @@ class GetDocument(DomainEvent):
         # Verify that the document exists.
         self.verify(
             expression=document is not None,
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 
@@ -364,8 +364,8 @@ class ListDocuments(DomainEvent):
         if visibility is not None:
             self.verify(
                 expression=visibility in a.core.VISIBILITIES,
-                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                error_code=a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 
@@ -442,7 +442,7 @@ class UpdateDocument(DomainEvent):
         valid_attributes = {'title', 'status', 'category_id', 'folder_id'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=a.errors.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
+            error_code=a.error.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
             message=f'Invalid document attribute: {attribute}',
             attribute=attribute,
         )
@@ -452,7 +452,7 @@ class UpdateDocument(DomainEvent):
             valid_statuses = {'draft', 'published', 'archived'}
             self.verify(
                 expression=value in valid_statuses,
-                error_code=a.errors.KB_INVALID_DOCUMENT_STATUS_ID,
+                error_code=a.error.KB_INVALID_DOCUMENT_STATUS_ID,
                 message=f'Invalid document status: {value}',
                 status=value,
             )
@@ -461,7 +461,7 @@ class UpdateDocument(DomainEvent):
         if attribute == 'title':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=a.errors.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
+                error_code=a.error.KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
                 message='A document title is required.',
             )
 
@@ -471,7 +471,7 @@ class UpdateDocument(DomainEvent):
         # Verify that the document exists.
         self.verify(
             expression=document is not None,
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 
@@ -542,8 +542,8 @@ class SetDocumentVisibility(DomainEvent):
         # Reject a token outside the closed set, including a status token.
         self.verify(
             expression=visibility in a.core.VISIBILITIES,
-            error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-            message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+            error_code=a.error.KB_INVALID_VISIBILITY_ID,
+            message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
             visibility=visibility,
         )
 
@@ -551,7 +551,7 @@ class SetDocumentVisibility(DomainEvent):
         document = self.document_service.get(id)
         self.verify(
             expression=document is not None,
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=id,
         )
 
@@ -686,7 +686,7 @@ class AddDocumentSection(DomainEvent):
         valid_types = {'text', 'markdown', 'code'}
         self.verify(
             expression=content_type in valid_types,
-            error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
+            error_code=a.error.KB_INVALID_CONTENT_TYPE_ID,
             message=f'Invalid content type: {content_type}',
             content_type=content_type,
         )
@@ -694,7 +694,7 @@ class AddDocumentSection(DomainEvent):
         # Verify the parent document exists.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -777,7 +777,7 @@ class UpdateDocumentSection(DomainEvent):
         valid_attributes = {'title', 'content', 'content_type', 'heading_level', 'icon'}
         self.verify(
             expression=attribute in valid_attributes,
-            error_code=a.errors.KB_INVALID_SECTION_ATTRIBUTE_ID,
+            error_code=a.error.KB_INVALID_SECTION_ATTRIBUTE_ID,
             message=f'Invalid section attribute: {attribute}',
             attribute=attribute,
         )
@@ -787,7 +787,7 @@ class UpdateDocumentSection(DomainEvent):
             valid_types = {'text', 'markdown', 'code'}
             self.verify(
                 expression=value in valid_types,
-                error_code=a.errors.KB_INVALID_CONTENT_TYPE_ID,
+                error_code=a.error.KB_INVALID_CONTENT_TYPE_ID,
                 message=f'Invalid content type: {value}',
                 content_type=value,
             )
@@ -796,7 +796,7 @@ class UpdateDocumentSection(DomainEvent):
         if attribute == 'title':
             self.verify(
                 expression=isinstance(value, str) and bool(value.strip()),
-                error_code=a.errors.KB_INVALID_SECTION_ATTRIBUTE_ID,
+                error_code=a.error.KB_INVALID_SECTION_ATTRIBUTE_ID,
                 message='A section title is required.',
             )
 
@@ -804,7 +804,7 @@ class UpdateDocumentSection(DomainEvent):
         document_id = kwargs.get('document_id')
         self.verify(
             expression=document_id is not None,
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             message='document_id is required to locate the section.',
             section_id=id,
         )
@@ -816,7 +816,7 @@ class UpdateDocumentSection(DomainEvent):
         # Verify the section exists.
         self.verify(
             expression=section is not None,
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             section_id=id,
         )
 
@@ -938,7 +938,7 @@ class ReorderDocumentSections(DomainEvent):
         # Verify the document exists.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -994,7 +994,7 @@ class ListDocumentSectionRevisions(DomainEvent):
         # A missing document id must not walk every document group.
         self.verify(
             expression=locator_present(document_id, id),
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             message='document_id and section id are required to list revisions.',
             section_id=id,
         )
@@ -1003,7 +1003,7 @@ class ListDocumentSectionRevisions(DomainEvent):
         section = self.document_service.get_section(document_id, id)
         self.verify(
             expression=section is not None,
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             section_id=id,
         )
 
@@ -1059,7 +1059,7 @@ class RestoreDocumentSectionRevision(DomainEvent):
         # A missing document id must not walk every document group.
         self.verify(
             expression=locator_present(document_id, id),
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             message='document_id and section id are required to restore a revision.',
             section_id=id,
         )
@@ -1068,7 +1068,7 @@ class RestoreDocumentSectionRevision(DomainEvent):
         section = self.document_service.get_section(document_id, id)
         self.verify(
             expression=section is not None,
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             section_id=id,
         )
 
@@ -1076,7 +1076,7 @@ class RestoreDocumentSectionRevision(DomainEvent):
         chosen = revision_number(number)
         self.verify(
             expression=chosen is not None and chosen >= 1,
-            error_code=a.errors.KB_SECTION_REVISION_NOT_FOUND_ID,
+            error_code=a.error.KB_SECTION_REVISION_NOT_FOUND_ID,
             message=f'Section revision not found: {number}',
             section_id=id,
             number=number,
@@ -1086,7 +1086,7 @@ class RestoreDocumentSectionRevision(DomainEvent):
         revision = self.document_service.get_section_revision(document_id, id, chosen)
         self.verify(
             expression=revision is not None,
-            error_code=a.errors.KB_SECTION_REVISION_NOT_FOUND_ID,
+            error_code=a.error.KB_SECTION_REVISION_NOT_FOUND_ID,
             message=f'Section revision not found: {chosen}',
             section_id=id,
             number=chosen,
@@ -1168,19 +1168,19 @@ class SetDocumentProperty(DomainEvent):
         stored_name = name.strip()
         name_width = DocumentPropertyTableObject._H5_TYPES['name'].itemsize
         if len(stored_name.encode('utf-8')) > name_width:
-            self.raise_error(a.errors.KB_INVALID_PROPERTY_NAME_ID, name=name)
+            self.raise_error(a.error.KB_INVALID_PROPERTY_NAME_ID, name=name)
         if value_type == 'string' and isinstance(value, str):
             value_width = DocumentPropertyTableObject._H5_TYPES['value_string'].itemsize
             if len(value.encode('utf-8')) > value_width:
                 self.raise_error(
-                    a.errors.KB_INVALID_PROPERTY_VALUE_ID,
+                    a.error.KB_INVALID_PROPERTY_VALUE_ID,
                     value_type=value_type,
                 )
 
         # Do not create a document for a property write.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 

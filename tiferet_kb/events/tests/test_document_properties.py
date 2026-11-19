@@ -7,13 +7,13 @@ from pathlib import Path
 
 # ** infra
 import pytest
-import yaml
 
 # ** app
 from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
-from ...assets.errors import (
+from ...assets.app import KB_DEFAULT_SERVICES
+from ...assets.error import (
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_ATTRIBUTE_ID,
     KB_INVALID_PROPERTY_FILTER_ID,
@@ -21,6 +21,7 @@ from ...assets.errors import (
     KB_INVALID_PROPERTY_TYPE_ID,
     KB_INVALID_PROPERTY_VALUE_ID,
 )
+from ...assets.feature import KB_DEFAULT_FEATURES
 from ...domain.document import DocumentProperty, DocumentSection
 from ...mappers.document import DocumentTableObject
 from ...repos.document import DOCUMENT_PROPERTIES_TABLE, DocumentH5Repository
@@ -482,12 +483,9 @@ def test_header_columns_and_wiring_stay_in_scope():
     }
     assert 'content' not in DocumentSection.model_fields
 
-    root = Path(__file__).resolve().parents[3]
-    feature = yaml.safe_load((root / 'app/configs/feature.yml').read_text())
-    document = feature['features']['document']
-    assert 'set_property' in document
-    assert 'remove_property' in document
-    assert document['set_property']['commands'][0]['attribute_id'] == 'set_document_property_event'
-    container = yaml.safe_load((root / 'app/configs/container.yml').read_text())
-    assert container['attrs']['set_document_property_event']['class_name'] == 'SetDocumentProperty'
-    assert container['attrs']['remove_document_property_event']['class_name'] == 'RemoveDocumentProperty'
+    # YAML wiring is retired. The catalogs publish the two property commands.
+    assert 'document.set_property' in KB_DEFAULT_FEATURES
+    assert 'document.remove_property' in KB_DEFAULT_FEATURES
+    assert KB_DEFAULT_FEATURES['document.set_property']['steps'][0]['service_id'] == 'set_document_property_event'
+    assert KB_DEFAULT_SERVICES['set_document_property_event']['class_name'] == 'SetDocumentProperty'
+    assert KB_DEFAULT_SERVICES['remove_document_property_event']['class_name'] == 'RemoveDocumentProperty'

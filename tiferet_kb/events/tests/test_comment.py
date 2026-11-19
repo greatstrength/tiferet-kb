@@ -89,7 +89,7 @@ def test_add_section_comment_missing_document(mock_document_service):
             author='ada',
             text='a note',
         )
-    assert exc_info.value.error_code == a.errors.KB_DOCUMENT_NOT_FOUND_ID
+    assert exc_info.value.error_code == a.error.KB_DOCUMENT_NOT_FOUND_ID
     mock_document_service.add_comment.assert_not_called()
 
 # ** test: add_section_comment_missing_section
@@ -108,7 +108,7 @@ def test_add_section_comment_missing_section(mock_document_service):
             author='ada',
             text='a note',
         )
-    assert exc_info.value.error_code == a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID
+    assert exc_info.value.error_code == a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID
     mock_document_service.add_comment.assert_not_called()
 
 # ** test: add_section_comment_rejects_empty_and_overlong
@@ -140,7 +140,7 @@ def test_add_section_comment_rejects_empty_and_overlong(mock_document_service, a
             author=author,
             text=text,
         )
-    assert exc_info.value.error_code == a.errors.KB_INVALID_SECTION_COMMENT_ID
+    assert exc_info.value.error_code == a.error.KB_INVALID_SECTION_COMMENT_ID
     mock_document_service.add_comment.assert_not_called()
 
 # ** test: add_section_comment_rejects_bad_parent
@@ -168,7 +168,7 @@ def test_add_section_comment_rejects_bad_parent(mock_document_service):
                 id='cmt-self',
                 parent_id=parent_id,
             )
-        assert exc_info.value.error_code == a.errors.KB_INVALID_SECTION_COMMENT_ID
+        assert exc_info.value.error_code == a.error.KB_INVALID_SECTION_COMMENT_ID
     mock_document_service.add_comment.assert_not_called()
 
 # ** test: add_section_comment_accepts_reply_to_reply
@@ -228,7 +228,7 @@ def test_add_section_comment_duplicate_does_not_replace(mock_document_service):
             text='replacement',
             id='cmt-001',
         )
-    assert exc_info.value.error_code == a.errors.KB_SECTION_COMMENT_ALREADY_EXISTS_ID
+    assert exc_info.value.error_code == a.error.KB_SECTION_COMMENT_ALREADY_EXISTS_ID
     mock_document_service.add_comment.assert_called_once()
 
 # ** test: list_section_comments_missing_section_is_not_empty
@@ -245,7 +245,7 @@ def test_list_section_comments_missing_section_is_not_empty(mock_document_servic
             document_id='doc-001',
             section_id='missing',
         )
-    assert exc_info.value.error_code == a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID
+    assert exc_info.value.error_code == a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID
     mock_document_service.list_comments.assert_not_called()
 
 # ** test: list_section_comments_empty
@@ -326,7 +326,7 @@ def test_remove_section_comment_with_replies(mock_document_service):
             dependencies={'document_service': mock_document_service},
             id='cmt-1',
         )
-    assert exc_info.value.error_code == a.errors.KB_SECTION_COMMENT_HAS_REPLIES_ID
+    assert exc_info.value.error_code == a.error.KB_SECTION_COMMENT_HAS_REPLIES_ID
 
 # ** test: events_are_exported
 def test_events_are_exported():

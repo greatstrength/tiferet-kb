@@ -13,7 +13,7 @@ from unittest import mock
 from tiferet.events import DomainEvent
 from tiferet.assets import TiferetError
 
-from ...assets import errors as err
+from ...assets import error as err
 from ...domain.document import Document
 from ...interfaces.document import DocumentService
 from ...interfaces.tag import TagService

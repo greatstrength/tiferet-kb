@@ -114,7 +114,7 @@ class AddFolder(DomainEvent):
         # Verify no duplicate.
         self.verify(
             expression=not self.folder_service.exists(folder.id),
-            error_code=a.errors.KB_FOLDER_ALREADY_EXISTS_ID,
+            error_code=a.error.KB_FOLDER_ALREADY_EXISTS_ID,
             message=f'Folder with ID {folder.id} already exists.',
             id=folder.id,
         )
@@ -123,8 +123,8 @@ class AddFolder(DomainEvent):
         if visibility is not None:
             self.verify(
                 expression=visibility in a.core.VISIBILITIES,
-                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                error_code=a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 
@@ -175,7 +175,7 @@ class GetFolder(DomainEvent):
         # Verify existence.
         self.verify(
             expression=folder is not None,
-            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.error.KB_FOLDER_NOT_FOUND_ID,
             folder_id=id,
         )
 
@@ -234,8 +234,8 @@ class SetFolderVisibility(DomainEvent):
         # Reject a token outside the closed set, including a status token.
         self.verify(
             expression=visibility in a.core.VISIBILITIES,
-            error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-            message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+            error_code=a.error.KB_INVALID_VISIBILITY_ID,
+            message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
             visibility=visibility,
         )
 
@@ -243,7 +243,7 @@ class SetFolderVisibility(DomainEvent):
         folder = self.folder_service.get(id)
         self.verify(
             expression=folder is not None,
-            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.error.KB_FOLDER_NOT_FOUND_ID,
             folder_id=id,
         )
 
@@ -311,15 +311,15 @@ class ListFolderContents(DomainEvent):
         if visibility is not None:
             self.verify(
                 expression=visibility in a.core.VISIBILITIES,
-                error_code=a.errors.KB_INVALID_VISIBILITY_ID,
-                message=a.errors.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
+                error_code=a.error.KB_INVALID_VISIBILITY_ID,
+                message=a.error.KB_INVALID_VISIBILITY_MESSAGE.format(visibility=visibility),
                 visibility=visibility,
             )
 
         # Verify the folder exists.
         self.verify(
             expression=self.folder_service.exists(folder_id),
-            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.error.KB_FOLDER_NOT_FOUND_ID,
             folder_id=folder_id,
         )
 
@@ -386,7 +386,7 @@ class MoveFolder(DomainEvent):
         folder = self.folder_service.get(id)
         self.verify(
             expression=folder is not None,
-            error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+            error_code=a.error.KB_FOLDER_NOT_FOUND_ID,
             folder_id=id,
         )
 
@@ -394,7 +394,7 @@ class MoveFolder(DomainEvent):
         if new_parent_id:
             self.verify(
                 expression=new_parent_id != id,
-                error_code=a.errors.KB_FOLDER_CIRCULAR_REFERENCE_ID,
+                error_code=a.error.KB_FOLDER_CIRCULAR_REFERENCE_ID,
                 message='A folder cannot be its own parent.',
                 folder_id=id,
             )
@@ -404,7 +404,7 @@ class MoveFolder(DomainEvent):
             parent = self.folder_service.get(new_parent_id)
             self.verify(
                 expression=parent is not None,
-                error_code=a.errors.KB_FOLDER_NOT_FOUND_ID,
+                error_code=a.error.KB_FOLDER_NOT_FOUND_ID,
                 folder_id=new_parent_id,
             )
             new_path = f'{parent.path}/{folder.name}'
@@ -467,7 +467,7 @@ class MoveDocument(DomainEvent):
         document = self.document_service.get(document_id)
         self.verify(
             expression=document is not None,
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 

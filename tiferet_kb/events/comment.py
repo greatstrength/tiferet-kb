@@ -55,7 +55,7 @@ class CommentEvent(DomainEvent):
         # A missing document is not an empty comment list.
         self.verify(
             expression=self.document_service.exists(document_id),
-            error_code=a.errors.KB_DOCUMENT_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_NOT_FOUND_ID,
             document_id=document_id,
         )
 
@@ -63,7 +63,7 @@ class CommentEvent(DomainEvent):
         sections = self.document_service.get_sections(document_id)
         self.verify(
             expression=any(section.id == section_id for section in sections),
-            error_code=a.errors.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
+            error_code=a.error.KB_DOCUMENT_SECTION_NOT_FOUND_ID,
             section_id=section_id,
         )
 
@@ -86,7 +86,7 @@ class CommentEvent(DomainEvent):
         cleaned = value.strip() if isinstance(value, str) else ''
         self.verify(
             expression=bool(cleaned) and len(cleaned) <= limit,
-            error_code=a.errors.KB_INVALID_SECTION_COMMENT_ID,
+            error_code=a.error.KB_INVALID_SECTION_COMMENT_ID,
             message=f'Invalid section comment {field}.',
             field=field,
         )
@@ -119,7 +119,7 @@ class CommentEvent(DomainEvent):
         # A comment cannot name itself. Parent id is set only on add, so this is the cycle check.
         self.verify(
             expression=parent_key != comment_id,
-            error_code=a.errors.KB_INVALID_SECTION_COMMENT_ID,
+            error_code=a.error.KB_INVALID_SECTION_COMMENT_ID,
             message='A section comment cannot reply to itself.',
             parent_id=parent_key,
         )
@@ -129,7 +129,7 @@ class CommentEvent(DomainEvent):
         parent = next((item for item in comments if item.id == parent_key), None)
         self.verify(
             expression=parent is not None,
-            error_code=a.errors.KB_INVALID_SECTION_COMMENT_ID,
+            error_code=a.error.KB_INVALID_SECTION_COMMENT_ID,
             message='Parent comment is not on this section.',
             parent_id=parent_key,
         )
@@ -208,7 +208,7 @@ class AddSectionComment(CommentEvent):
         inserted = self.document_service.add_comment(comment)
         self.verify(
             expression=inserted,
-            error_code=a.errors.KB_SECTION_COMMENT_ALREADY_EXISTS_ID,
+            error_code=a.error.KB_SECTION_COMMENT_ALREADY_EXISTS_ID,
             message=f'Section comment with ID {comment.id} already exists.',
             id=comment.id,
         )
@@ -278,7 +278,7 @@ class RemoveSectionComment(CommentEvent):
         outcome = self.document_service.delete_comment(id)
         self.verify(
             expression=outcome is not False,
-            error_code=a.errors.KB_SECTION_COMMENT_HAS_REPLIES_ID,
+            error_code=a.error.KB_SECTION_COMMENT_HAS_REPLIES_ID,
             message=f'Section comment {id} still has replies.',
             id=id,
         )

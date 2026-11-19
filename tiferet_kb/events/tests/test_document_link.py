@@ -2,24 +2,22 @@
 
 # *** imports
 
-# ** core
-from pathlib import Path
-
 # ** infra
 import pytest
-import yaml
 from unittest import mock
 
 # ** app
 from tiferet.assets import TiferetError
 from tiferet.events import DomainEvent
 
-from ...assets.errors import (
-    DEFAULT_ERRORS,
+from ...assets.app import KB_DEFAULT_SERVICES
+from ...assets.error import (
+    KB_DEFAULT_ERRORS,
     KB_DOCUMENT_LINK_ALREADY_EXISTS_ID,
     KB_DOCUMENT_NOT_FOUND_ID,
     KB_INVALID_DOCUMENT_LINK_ID,
 )
+from ...assets.feature import KB_DEFAULT_FEATURES
 from ...domain.document_link import (
     DOCUMENT_LINK_REFERENCES,
     DOCUMENT_LINK_RELATED_TO,
@@ -250,23 +248,14 @@ def test_commands_and_errors_are_published():
     assert ExportedAdd is AddDocumentLink
     assert ExportedRemove is RemoveDocumentLink
     assert ExportedList is ListDocumentLinks
-    assert KB_DOCUMENT_LINK_ALREADY_EXISTS_ID in DEFAULT_ERRORS
-    assert KB_INVALID_DOCUMENT_LINK_ID in DEFAULT_ERRORS
-    assert KB_DOCUMENT_NOT_FOUND_ID in DEFAULT_ERRORS
+    assert KB_DOCUMENT_LINK_ALREADY_EXISTS_ID in KB_DEFAULT_ERRORS
+    assert KB_INVALID_DOCUMENT_LINK_ID in KB_DEFAULT_ERRORS
+    assert KB_DOCUMENT_NOT_FOUND_ID in KB_DEFAULT_ERRORS
 
-    root = Path(__file__).resolve().parents[3]
-    features = yaml.safe_load((root / 'app/configs/feature.yml').read_text())
-    container = yaml.safe_load((root / 'app/configs/container.yml').read_text())
-    errors = yaml.safe_load((root / 'app/configs/error.yml').read_text())
-
-    group = features['features']['document_link']
-    assert set(group) == {'add', 'remove', 'list'}
-    assert group['add']['commands'][0]['attribute_id'] == 'add_document_link_event'
-    assert group['remove']['commands'][0]['attribute_id'] == 'remove_document_link_event'
-    assert group['list']['commands'][0]['attribute_id'] == 'list_document_links_event'
-    assert container['attrs']['add_document_link_event']['class_name'] == 'AddDocumentLink'
-    assert container['attrs']['remove_document_link_event']['class_name'] == 'RemoveDocumentLink'
-    assert container['attrs']['list_document_links_event']['class_name'] == 'ListDocumentLinks'
-    assert 'kb_document_not_found' in errors['errors']
-    assert 'kb_document_link_already_exists' in errors['errors']
-    assert 'kb_invalid_document_link' in errors['errors']
+    # The catalogs publish the three commands. Lowercase YAML keys are not codes.
+    assert KB_DEFAULT_FEATURES['document_link.add']['steps'][0]['service_id'] == 'add_document_link_event'
+    assert KB_DEFAULT_FEATURES['document_link.remove']['steps'][0]['service_id'] == 'remove_document_link_event'
+    assert KB_DEFAULT_FEATURES['document_link.list']['steps'][0]['service_id'] == 'list_document_links_event'
+    assert KB_DEFAULT_SERVICES['add_document_link_event']['class_name'] == 'AddDocumentLink'
+    assert KB_DEFAULT_SERVICES['remove_document_link_event']['class_name'] == 'RemoveDocumentLink'
+    assert KB_DEFAULT_SERVICES['list_document_links_event']['class_name'] == 'ListDocumentLinks'

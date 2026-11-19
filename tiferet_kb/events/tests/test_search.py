@@ -2,9 +2,6 @@
 
 # *** imports
 
-# ** core
-from pathlib import Path
-
 # ** infra
 import pytest
 from unittest import mock
@@ -14,6 +11,8 @@ from tiferet.assets import TiferetError
 from tiferet.assets.error import COMMAND_PARAMETER_REQUIRED_ID
 from tiferet.events import DomainEvent
 
+from ...assets.app import KB_DEFAULT_SERVICES
+from ...assets.feature import KB_DEFAULT_FEATURES
 from ... import SearchComposedSections, SearchKeywordSections, SearchSimilarSections
 from ...events import SearchComposedSections as EventsComposed
 from ...events import SearchKeywordSections as EventsKeyword
@@ -153,18 +152,16 @@ def test_search_composed_sections_forwards_blank_query(mock_document_service):
         document_id=None,
     )
 
-# ** test: search_events_are_exported_and_unregistered
-def test_search_events_are_exported_and_unregistered():
-    '''The search events are exported beside similar search and are not features.'''
+# ** test: search_events_are_exported_and_catalogued
+def test_search_events_are_exported_and_catalogued():
+    '''The search events are exported and registered on the catalogs.'''
 
     assert ModuleKeyword is SearchKeywordSections is EventsKeyword
     assert ModuleComposed is SearchComposedSections is EventsComposed
     assert SearchSimilarSections.__name__ == 'SearchSimilarSections'
 
-    root = Path(__file__).resolve().parents[3]
-    feature = (root / 'app' / 'configs' / 'feature.yml').read_text()
-    container = (root / 'app' / 'configs' / 'container.yml').read_text()
-    assert 'SearchKeywordSections' not in feature
-    assert 'SearchComposedSections' not in feature
-    assert 'SearchKeywordSections' not in container
-    assert 'SearchComposedSections' not in container
+    # The unregistered YAML claim is retired. The catalogs are the record.
+    assert 'search.keyword' in KB_DEFAULT_FEATURES
+    assert 'search.composed' in KB_DEFAULT_FEATURES
+    assert 'search_keyword_sections_event' in KB_DEFAULT_SERVICES
+    assert 'search_composed_sections_event' in KB_DEFAULT_SERVICES
