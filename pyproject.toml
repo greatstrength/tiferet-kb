@@ -17,8 +17,8 @@ classifiers = [
     "Development Status :: 4 - Beta",
 ]
 dependencies = [
-    "tiferet>=2.1.1,<2.2",
-    "tiferet-h5>=1.0.0,<2",
+    "tiferet==2.2.3",
+    "tiferet-h5==1.0.1a2",
 ]
 
 [project.optional-dependencies]
