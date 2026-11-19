@@ -84,6 +84,9 @@ def test_remove_node_array(node_repo):
     '''An array is removed with the default recursive=False.'''
 
     with node_repo.client() as h5:
+
+        # create_array does not create a missing parent group.
+        h5.create_group('/kb')
         h5.create_array('/kb/arr', np.zeros((2, 2), dtype=np.float32))
         node_repo.remove_node(h5, '/kb/arr')
         assert not h5.node_exists('/kb/arr')
