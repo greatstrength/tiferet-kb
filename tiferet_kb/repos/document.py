@@ -411,9 +411,8 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if not h5.node_exists(DOCUMENTS_TABLE):
                 return []
 
-            # Header filters use truthiness. Title is bound, not interpolated.
+            # Header filters use truthiness. Title is escaped, not bound.
             conditions = []
-            condvars = {}
             if folder_id:
                 conditions.append(f'(folder_id == b"{folder_id}")')
             if category_id:
@@ -421,17 +420,12 @@ class DocumentH5Repository(H5Repository, DocumentService):
             if status:
                 conditions.append(f'(status == b"{status}")')
             if title:
-                conditions.append('(title == title_eq)')
-                condvars['title_eq'] = title.encode('utf-8')
+                conditions.append(KBTableRepository.string_equals('title', title))
 
-            # Read matching header rows. A bound title stays an in-kernel query.
+            # Read matching header rows. A title stays an in-kernel query.
             condition = ' & '.join(conditions) if conditions else None
-            if condvars:
-                rows = list(h5.iter_query(
-                    DOCUMENTS_TABLE,
-                    condition,
-                    condvars=condvars,
-                ))
+            if title:
+                rows = list(h5.iter_query(DOCUMENTS_TABLE, condition))
             else:
                 rows = h5.read_rows(DOCUMENTS_TABLE, condition=condition)
 
