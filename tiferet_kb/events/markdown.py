@@ -9,15 +9,16 @@ from typing import List, Optional
 from tiferet.events import DomainEvent
 
 from .. import a
-from ..domain.document import Document, DocumentSection
+from ..domain.document import (
+    Document,
+    DocumentSection,
+    join_markdown_sections,
+    render_section,
+    split_markdown_sections,
+)
+from ..domain.segment import parse_content_to_paragraphs
 from ..interfaces.document import DocumentService
 from ..mappers.document import DocumentAggregate, DocumentSectionAggregate
-from ..utils.markdown import (
-    split_markdown_sections,
-    join_markdown_sections,
-    parse_content_to_paragraphs,
-    render_section,
-)
 
 # *** events
 

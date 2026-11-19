@@ -11,6 +11,7 @@ from tiferet.events import DomainEvent
 from .. import a
 from ..domain.template import Template
 from ..domain.document import Document
+from ..domain.segment import parse_content_to_paragraphs
 from ..interfaces.template import TemplateService
 from ..interfaces.document import DocumentService
 from ..mappers.template import TemplateAggregate, TemplateSectionAggregate
@@ -398,7 +399,6 @@ class ApplyTemplate(DomainEvent):
 
             # Parse the template's default content into paragraphs.
             if tmpl_section.default_content:
-                from ..utils.markdown import parse_content_to_paragraphs
                 paragraphs = parse_content_to_paragraphs(
                     tmpl_section.default_content, doc_section.id,
                 )

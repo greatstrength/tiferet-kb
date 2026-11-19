@@ -11,6 +11,7 @@ from tiferet.events import DomainEvent
 
 from .. import a
 from ..domain.document import Document, DocumentProperty, DocumentSection
+from ..domain.segment import parse_content_to_paragraphs
 from ..interfaces.document import DocumentService
 from ..interfaces.tag import TagService
 from ..mappers.document import (
@@ -18,7 +19,6 @@ from ..mappers.document import (
     DocumentPropertyTableObject,
     DocumentSectionAggregate,
 )
-from ..utils.markdown import parse_content_to_paragraphs
 
 # *** functions
 

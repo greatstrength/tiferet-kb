@@ -31,7 +31,7 @@ from ...events.document import (
     RestoreDocumentSectionRevision,
     UpdateDocumentSection,
 )
-from ...utils.markdown import parse_content_to_paragraphs
+from ...domain.segment import parse_content_to_paragraphs
 from ..document import (
     DOCUMENTS_TABLE,
     EMBEDDINGS_ARRAY,

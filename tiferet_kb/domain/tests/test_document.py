@@ -7,10 +7,16 @@ import pytest
 from pydantic import ValidationError
 
 # ** app
-from ..document import Document, DocumentSection, SectionRevision
-from ..segment import Paragraph, TextSegment
+from ..document import (
+    Document,
+    DocumentSection,
+    SectionRevision,
+    join_markdown_sections,
+    render_section,
+    split_markdown_sections,
+)
+from ..segment import Paragraph, TextSegment, parse_content_to_paragraphs
 from ...mappers.document import DocumentSectionAggregate
-from ...utils.markdown import render_section
 
 # *** tests
 
@@ -274,3 +280,98 @@ def test_section_revision_has_no_content_string():
             title='Intro',
             content_type='markdown',
         )
+
+# ** test: split_basic_sections
+def test_split_basic_sections():
+    '''Split a markdown document with multiple H1 sections.'''
+
+    content = '# Introduction\n\nSome intro text.\n\n# Details\n\nDetail content here.\n\n## Subsection\n\nSub content.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 2
+    assert sections[0]['title'] == 'Introduction'
+    assert sections[0]['content'] == 'Some intro text.'
+    assert sections[1]['title'] == 'Details'
+    assert '## Subsection' in sections[1]['content']
+
+# ** test: split_single_section
+def test_split_single_section():
+    '''A document with one H1 produces one section.'''
+
+    content = '# Only Section\n\nContent here.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 1
+    assert sections[0]['title'] == 'Only Section'
+    assert sections[0]['content'] == 'Content here.'
+
+# ** test: split_empty_content
+def test_split_empty_content():
+    '''Empty content produces no sections.'''
+
+    assert split_markdown_sections('') == []
+    assert split_markdown_sections('   ') == []
+
+# ** test: split_no_h1_raises
+def test_split_no_h1_raises():
+    '''Content not starting with H1 raises ValueError.'''
+
+    with pytest.raises(ValueError):
+        split_markdown_sections('No heading here.\n\nJust paragraphs.')
+
+# ** test: split_section_no_content
+def test_split_section_no_content():
+    '''An H1 with no body produces a section with empty content.'''
+
+    content = '# Empty Section\n# Next Section\n\nHas content.'
+    sections = split_markdown_sections(content)
+
+    assert len(sections) == 2
+    assert sections[0]['title'] == 'Empty Section'
+    assert sections[0]['content'] == ''
+    assert sections[1]['title'] == 'Next Section'
+    assert sections[1]['content'] == 'Has content.'
+
+# ** test: join_dict_sections
+def test_join_dict_sections():
+    '''Join sections from dicts back into markdown.'''
+
+    sections = [
+        {'title': 'Introduction', 'content': 'Some intro.'},
+        {'title': 'Details', 'content': 'Detail content.'},
+    ]
+    result = join_markdown_sections(sections)
+
+    assert result == '# Introduction\n\nSome intro.\n\n# Details\n\nDetail content.\n'
+
+# ** test: join_empty_list
+def test_join_empty_list():
+    '''Joining an empty list produces an empty string.'''
+
+    assert join_markdown_sections([]) == ''
+
+# ** test: round_trip_split_join
+def test_round_trip_split_join():
+    '''Splitting then joining should produce equivalent markdown.'''
+
+    original = '# First\n\nContent one.\n\n# Second\n\nContent two.\n'
+    sections = split_markdown_sections(original)
+    result = join_markdown_sections(sections)
+    assert result == original
+
+# ** test: render_section_matches_reassembly
+def test_render_section_matches_reassembly():
+    '''render_section is the public body helper and adds no heading or trailing newline.'''
+
+    class Section:
+        def __init__(self, paragraphs):
+            self.paragraphs = paragraphs
+            self.title = 'Heading'
+
+    paragraphs = parse_content_to_paragraphs('user prefers Python', section_id='sec-1')
+    rendered = render_section(Section(paragraphs))
+
+    assert rendered == 'user prefers Python'
+    assert not rendered.endswith('\n')
+    assert 'Heading' not in rendered
+    assert render_section(Section([])) == ''

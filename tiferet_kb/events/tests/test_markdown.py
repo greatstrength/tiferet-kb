@@ -12,7 +12,8 @@ from tiferet.assets import TiferetError
 
 from ...interfaces import DocumentService
 from ...mappers import DocumentAggregate, DocumentSectionAggregate
-from ...utils.markdown import parse_content_to_paragraphs, render_section
+from ...domain.document import render_section
+from ...domain.segment import parse_content_to_paragraphs
 from ..markdown import ImportMarkdownDocument, ExportDocumentMarkdown
 
 # *** fixtures

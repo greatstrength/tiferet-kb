@@ -15,7 +15,7 @@ from pydantic import Field, model_validator
 from tiferet.domain import DomainObject, ModelError
 
 from ..assets import error as err
-from .segment import Paragraph
+from .segment import Paragraph, parse_content_to_paragraphs, reassemble_paragraph
 
 # *** constants
 
@@ -45,6 +45,144 @@ def link_url_key(link_url: Optional[str]) -> str:
 
     # Return a present URL unchanged.
     return link_url
+
+# ** function: split_markdown_sections
+def split_markdown_sections(content: str) -> List[dict]:
+    '''
+    Split a markdown document into sections delimited by H1 headings.
+
+    Convention: every document must start with an ``# H1`` heading.
+    Each H1 line begins a new section whose title is the heading text
+    and whose content is everything between this H1 and the next (or EOF).
+
+    :param content: The full markdown document string.
+    :type content: str
+    :return: Ordered list of dicts with ``title`` and ``content`` keys.
+    :rtype: List[dict]
+    :raises ValueError: If the content does not start with an H1 heading.
+    '''
+
+    if not content or not content.strip():
+        return []
+
+    lines = content.strip().split('\n')
+
+    # Validate that the document starts with an H1 heading.
+    if not lines[0].startswith('# '):
+        raise ValueError(
+            'Markdown document must start with an H1 heading ("# Title"). '
+            'Each H1 heading delimits a new section.'
+        )
+
+    sections: List[dict] = []
+    current_title: str | None = None
+    current_lines: List[str] = []
+
+    for line in lines:
+
+        # Detect H1 heading (but not ## or deeper).
+        if line.startswith('# ') and not line.startswith('## '):
+
+            # Flush the previous section if one exists.
+            if current_title is not None:
+                sections.append({
+                    'title': current_title,
+                    'content': '\n'.join(current_lines).strip(),
+                })
+
+            # Start a new section.
+            current_title = line[2:].strip()
+            current_lines = []
+        else:
+            current_lines.append(line)
+
+    # Flush the final section.
+    if current_title is not None:
+        sections.append({
+            'title': current_title,
+            'content': '\n'.join(current_lines).strip(),
+        })
+
+    return sections
+
+# ** function: join_markdown_sections
+def join_markdown_sections(sections) -> str:
+    '''
+    Reconstruct a markdown document from ordered sections.
+
+    Each section is emitted as ``# {title}`` followed by its content,
+    separated by double newlines.
+
+    :param sections: Ordered iterable of objects with ``title`` and
+        ``content`` attributes (or dicts with those keys).
+    :type sections: Iterable
+    :return: The assembled markdown string.
+    :rtype: str
+    '''
+
+    parts: List[str] = []
+
+    for section in sections:
+
+        # Support both dict and object access.
+        if isinstance(section, dict):
+            title = section['title']
+            content = section.get('content', '')
+        else:
+            title = section.title
+            content = getattr(section, 'content', '')
+
+        # Build the section markdown.
+        block = f'# {title}'
+        if content:
+            block += f'\n\n{content}'
+        parts.append(block)
+
+    return '\n\n'.join(parts) + '\n' if parts else ''
+
+# ** function: render_section
+def render_section(section: Any) -> str:
+    '''
+    Reconstruct one section's markdown body from its paragraphs.
+
+    This is the body reconstruction export uses for each section. It does
+    not emit the heading and does not add a document-level trailing newline.
+    Empty paragraphs return an empty string.
+
+    :param section: A section object with a ``paragraphs`` attribute.
+    :type section: Any
+    :return: The rendered section body.
+    :rtype: str
+    '''
+
+    # Empty paragraphs have no body.
+    paragraphs = getattr(section, 'paragraphs', None)
+    if not paragraphs:
+        return ''
+
+    parts: List[str] = []
+    for para in sorted(paragraphs, key=lambda p: p.position):
+
+        if para.block_type == 'code_block':
+
+            # Reconstruct a fenced code block.
+            text = para.segments[0].text if para.segments else ''
+            parts.append(f'```\n{text}\n```')
+
+        elif para.block_type == 'quote':
+
+            # Reconstruct a quote block.
+            text = reassemble_paragraph(para.segments)
+            lines = text.split('\n')
+            parts.append('\n'.join(f'> {line}' for line in lines))
+
+        else:
+
+            # Reconstruct a normal paragraph.
+            parts.append(reassemble_paragraph(para.segments))
+
+    # Join blocks the way export already did. No trailing newline.
+    return '\n\n'.join(parts)
 
 # *** models
 
@@ -132,7 +270,6 @@ class DocumentSection(DomainObject):
         '''
 
         # One renderer for the property and for export.
-        from ..utils.markdown import render_section
         return render_section(self)
 
     # * method: _derive_defaults (validator)
@@ -169,7 +306,6 @@ class DocumentSection(DomainObject):
 
             # Parse only when paragraphs are absent or empty.
             if content and not data.get('paragraphs'):
-                from ..utils.markdown import parse_content_to_paragraphs
                 data['paragraphs'] = parse_content_to_paragraphs(content, data['id'])
 
         # Set timestamps if not provided.
