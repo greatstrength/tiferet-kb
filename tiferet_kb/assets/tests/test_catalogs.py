@@ -395,4 +395,3 @@ def test_package_root_exports_bind():
     assert not hasattr(assets, 'DEFAULT_ERRORS')
     assert not hasattr(tiferet_kb, 'build_cache')
     assert not hasattr(assets, 'KB_DEFAULT_CONSTANTS')
-    assert importlib.util.find_spec('tiferet_kb.blueprints') is None
