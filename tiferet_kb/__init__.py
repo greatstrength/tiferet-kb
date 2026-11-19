@@ -1,5 +1,31 @@
 """tiferet_kb — Knowledge Base Extension for the Tiferet Framework"""
 
+# *** constants
+
+# ** constant: silent_imports
+SILENT_IMPORTS = 'TIFERET_KB_SILENT_IMPORTS'
+
+# *** functions
+
+# ** function: __getattr__
+def __getattr__(name: str):
+    '''
+    Load the session client when the caller asks for KB.
+
+    :param name: The attribute name.
+    :type name: str
+    :return: The session client function when the name is KB.
+    :rtype: object
+    '''
+
+    # Load the client only for the public name.
+    if name == 'KB':
+        from .blueprints.kb import build_kb
+        return build_kb
+
+    # Any other missing name is a real attribute error.
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
+
 # *** exports
 
 # ** app
@@ -46,7 +72,7 @@ try:
     )
 except Exception as e:
     import os, sys
-    if not os.getenv('TIFERET_KB_SILENT_IMPORTS'):
+    if not os.getenv(SILENT_IMPORTS):
         print(f'Warning: Failed to import tiferet_kb modules: {e}', file=sys.stderr)
 
 # *** version
